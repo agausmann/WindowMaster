@@ -1,0 +1,4 @@
+# KiCad files
+/fp-info-cache
+*-bak
+windowmaster-cache.lib
