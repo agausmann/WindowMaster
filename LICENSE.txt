@@ -1,0 +1,4 @@
+Copyright (C) 2021 Adam Gausmann
+
+The subprojects in this repository are licensed individually, and their license
+texts can be found in the `LICENSE` files in their respective subdirectories.
