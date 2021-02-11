@@ -13,6 +13,9 @@ cortex-m-rt = "0.6.13"
 embedded-hal = "0.2.4"
 panic-semihosting = "0.5.6"
 stm32f0xx-hal = { version = "0.17.1", features = ["stm32f072"] }
+stm32-usbd = { version = "0.5.1", features = ["ram_access_2x16"] }
+usb-device = "0.2.7"
+usbd-hid = "0.4.5"
 
 [dev-dependencies]
 embedded-hal-mock = "0.7.2"
