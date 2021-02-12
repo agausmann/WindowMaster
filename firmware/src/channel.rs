@@ -22,6 +22,14 @@ where
     S: InputPin,
     L: OutputPin,
 {
+    pub fn new(encoder: Encoder<A, B>, switch: Switch<S>, led: Led<L>) -> Self {
+        Self {
+            encoder,
+            switch,
+            led,
+        }
+    }
+
     pub fn encoder(&mut self) -> &mut Encoder<A, B> {
         &mut self.encoder
     }
