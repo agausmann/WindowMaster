@@ -91,21 +91,7 @@ Wire Wire Line
 Wire Wire Line
 	6950 2700 6950 2800
 Wire Wire Line
-	6950 2800 7400 2800
-Wire Wire Line
-	7400 2800 7400 3700
-Wire Wire Line
-	7400 3700 8700 3700
-Connection ~ 6950 2800
-Wire Wire Line
-	8700 3800 7300 3800
-Wire Wire Line
-	7300 3800 7300 3000
-Wire Wire Line
-	7300 3000 6950 3000
-Wire Wire Line
 	6950 2900 6950 3000
-Connection ~ 6950 3000
 $Comp
 L Device:R R10
 U 1 1 6019E130
@@ -150,8 +136,6 @@ $EndComp
 Wire Wire Line
 	7500 2500 7500 2550
 Connection ~ 7500 2500
-Wire Wire Line
-	7050 1600 7050 2200
 Wire Wire Line
 	7050 2200 6950 2200
 Wire Wire Line
@@ -251,31 +235,26 @@ IND_1
 $Comp
 L Device:C C1
 U 1 1 602211C5
-P 7300 1750
-F 0 "C1" H 7415 1796 50  0000 L CNN
-F 1 "100nF" H 7415 1705 50  0000 L CNN
-F 2 "Capacitor_SMD:C_0402_1005Metric" H 7338 1600 50  0001 C CNN
-F 3 "~" H 7300 1750 50  0001 C CNN
-F 4 "C1525" H 7300 1750 50  0001 C CNN "LCSC"
-	1    7300 1750
+P 5550 1100
+F 0 "C1" H 5665 1146 50  0000 L CNN
+F 1 "100nF" H 5665 1055 50  0000 L CNN
+F 2 "Capacitor_SMD:C_0402_1005Metric" H 5588 950 50  0001 C CNN
+F 3 "~" H 5550 1100 50  0001 C CNN
+F 4 "C1525" H 5550 1100 50  0001 C CNN "LCSC"
+	1    5550 1100
 	1    0    0    -1  
 $EndComp
-Connection ~ 7300 1600
-Wire Wire Line
-	7300 1600 7050 1600
 $Comp
 L power:GND #PWR010
 U 1 1 60221D60
-P 7300 1900
-F 0 "#PWR010" H 7300 1650 50  0001 C CNN
-F 1 "GND" H 7305 1727 50  0000 C CNN
-F 2 "" H 7300 1900 50  0001 C CNN
-F 3 "" H 7300 1900 50  0001 C CNN
-	1    7300 1900
+P 5550 1250
+F 0 "#PWR010" H 5550 1000 50  0001 C CNN
+F 1 "GND" H 5555 1077 50  0000 C CNN
+F 2 "" H 5550 1250 50  0001 C CNN
+F 3 "" H 5550 1250 50  0001 C CNN
+	1    5550 1250
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	7300 1600 7600 1600
 $Comp
 L Device:Rotary_Encoder_Switch SW2
 U 1 1 601BD609
@@ -1542,10 +1521,6 @@ Wire Wire Line
 	6050 950  6450 950 
 Wire Wire Line
 	6050 1250 6450 1250
-Text Label 7000 2800 0    50   ~ 0
-USB_D-
-Text Label 7000 3000 0    50   ~ 0
-USB_D+
 Text GLabel 8700 2800 0    50   UnSpc ~ 0
 IND_6
 Text GLabel 8700 2700 0    50   UnSpc ~ 0
@@ -1580,8 +1555,6 @@ Text GLabel 8700 3000 0    50   UnSpc ~ 0
 ENC_6A
 Text GLabel 8700 2900 0    50   UnSpc ~ 0
 ENC_6B
-Text Label 7050 2000 1    50   ~ 0
-USB_VBUS
 Text GLabel 10000 3100 2    50   UnSpc ~ 0
 IND_2
 Text GLabel 10000 3000 2    50   UnSpc ~ 0
@@ -1820,4 +1793,57 @@ F 4 "EG2531CT-ND" H 8850 5150 50  0001 C CNN "DigiKey"
 	1    8850 5150
 	1    0    0    -1  
 $EndComp
+Text GLabel 7050 2800 2    50   UnSpc ~ 0
+USB_DM
+Text GLabel 7050 3000 2    50   UnSpc ~ 0
+USB_DP
+Wire Wire Line
+	6950 2800 7050 2800
+Connection ~ 6950 2800
+Wire Wire Line
+	6950 3000 7050 3000
+Connection ~ 6950 3000
+Text GLabel 8700 3700 0    50   UnSpc ~ 0
+USB_DM
+Text GLabel 8700 3800 0    50   UnSpc ~ 0
+USB_DP
+$Comp
+L power:VBUS #PWR?
+U 1 1 602AA121
+P 5550 950
+F 0 "#PWR?" H 5550 800 50  0001 C CNN
+F 1 "VBUS" H 5565 1123 50  0000 C CNN
+F 2 "" H 5550 950 50  0001 C CNN
+F 3 "" H 5550 950 50  0001 C CNN
+	1    5550 950 
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:VBUS #PWR?
+U 1 1 602B0025
+P 7500 1500
+F 0 "#PWR?" H 7500 1350 50  0001 C CNN
+F 1 "VBUS" H 7515 1673 50  0000 C CNN
+F 2 "" H 7500 1500 50  0001 C CNN
+F 3 "" H 7500 1500 50  0001 C CNN
+	1    7500 1500
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:VBUS #PWR?
+U 1 1 602B0A4B
+P 7050 2100
+F 0 "#PWR?" H 7050 1950 50  0001 C CNN
+F 1 "VBUS" H 7065 2273 50  0000 C CNN
+F 2 "" H 7050 2100 50  0001 C CNN
+F 3 "" H 7050 2100 50  0001 C CNN
+	1    7050 2100
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	7050 2200 7050 2100
+Wire Wire Line
+	7500 1500 7500 1600
+Wire Wire Line
+	7500 1600 7600 1600
 $EndSCHEMATC
