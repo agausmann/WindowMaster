@@ -2,37 +2,26 @@
 #![cfg_attr(not(test), no_main)]
 
 extern crate panic_semihosting;
-use core::sync::atomic::AtomicBool;
 use cortex_m::interrupt::free as interrupt_free;
 use cortex_m_rt as rt;
 use stm32_usbd::UsbBus;
+use stm32f0xx_hal::delay::Delay;
 use stm32f0xx_hal::prelude::*;
 use stm32f0xx_hal::{stm32, usb};
-use usb_device::class_prelude::*;
 use usb_device::prelude::*;
-use usbd_hid::descriptor::*;
+use usbd_hid::descriptor::generator_prelude::*;
 use usbd_hid::hid_class::HIDClass;
 use windowmaster_firmware::{Channel, Encoder, Led, Switch};
 
 #[gen_hid_descriptor(
-    (report_id = 0x01,) = {
-        #[item_settings relative] encoder_1=input;
-        #[item_settings relative] encoder_2=input;
-        #[item_settings relative] encoder_3=input;
-        #[item_settings relative] encoder_4=input;
-        #[item_settings relative] encoder_5=input;
-        #[item_settings relative] encoder_6=input;
+    (collection = APPLICATION,) = {
+        #[item_settings relative] encoders=input;
         #[packed_bits 6] buttons=input;
         #[packed_bits 6] leds=output;
     }
 )]
 struct Report {
-    encoder_1: i8,
-    encoder_2: i8,
-    encoder_3: i8,
-    encoder_4: i8,
-    encoder_5: i8,
-    encoder_6: i8,
+    encoders: [i8; 6],
     buttons: u8,
     leds: u8,
 }
@@ -57,24 +46,29 @@ macro_rules! build_channel {
 #[cfg(not(test))]
 #[rt::entry]
 fn main() -> ! {
+    let mut dp = stm32::Peripherals::take().unwrap();
+    let cp = stm32::CorePeripherals::take().unwrap();
+
+    let mut rcc = dp
+        .RCC
+        .configure()
+        .hsi48()
+        .enable_crs(dp.CRS)
+        .sysclk(48.mhz())
+        .pclk(24.mhz())
+        .freeze(&mut dp.FLASH);
+
+    let mut delay = Delay::new(cp.SYST, &rcc);
+
+    // Unpack items used inside critical section
+    let usb = dp.USB;
+    let gpioa = dp.GPIOA.split(&mut rcc);
+    let gpiob = dp.GPIOB.split(&mut rcc);
+    let gpioc = dp.GPIOC.split(&mut rcc);
+    let gpiof = dp.GPIOF.split(&mut rcc);
+
     let (channel_1, channel_2, channel_3, channel_4, channel_5, channel_6, usb_bus) =
         interrupt_free(|guard| {
-            let mut dp = stm32::Peripherals::take().unwrap();
-
-            let mut rcc = dp
-                .RCC
-                .configure()
-                .hsi48()
-                .enable_crs(dp.CRS)
-                .sysclk(48.mhz())
-                .pclk(24.mhz())
-                .freeze(&mut dp.FLASH);
-
-            let gpioa = dp.GPIOA.split(&mut rcc);
-            let gpiob = dp.GPIOB.split(&mut rcc);
-            let gpioc = dp.GPIOC.split(&mut rcc);
-            let gpiof = dp.GPIOF.split(&mut rcc);
-
             let channel_1 = build_channel! {
                 enc_a: gpioc.pc14,
                 enc_b: gpioc.pc13,
@@ -118,8 +112,10 @@ fn main() -> ! {
                 guard,
             };
 
+            // Doesn't technically have to be in critical section,
+            // but because it partially moves `gpioa` it's cleaner to put it here.
             let usb_bus = UsbBus::new(usb::Peripheral {
-                usb: dp.USB,
+                usb,
                 pin_dm: gpioa.pa11,
                 pin_dp: gpioa.pa12,
             });
@@ -134,9 +130,10 @@ fn main() -> ! {
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x4573))
         .manufacturer("Adam Gausmann")
         .product("WindowMaster")
-        .serial_number("NA") //TODO
-        .device_class(0xEF) //TODO
         .build();
 
-    loop {}
+    loop {
+        if usb_dev.poll(&mut [&mut hid]) {}
+        delay.delay_ms(5u8);
+    }
 }
