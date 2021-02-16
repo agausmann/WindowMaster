@@ -131,9 +131,7 @@ fn main() -> ! {
 
     let mut hid = HIDClass::new(&usb_bus, Report::desc(), 10);
 
-    //TODO Register PID.
-    // Pending: 1209:4573 - https://github.com/pidcodes/pidcodes.github.com/pull/616
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
+    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x4573))
         .manufacturer("Adam Gausmann")
         .product("WindowMaster")
         .serial_number("NA") //TODO
