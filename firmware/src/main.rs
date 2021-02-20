@@ -5,21 +5,28 @@ extern crate panic_semihosting;
 use cortex_m::interrupt::free as interrupt_free;
 use cortex_m_rt as rt;
 use stm32_usbd::UsbBus;
-use stm32f0xx_hal::delay::Delay;
 use stm32f0xx_hal::prelude::*;
 use stm32f0xx_hal::{stm32, usb};
 use usb_device::prelude::*;
 use usbd_hid::descriptor::generator_prelude::*;
 use usbd_hid::hid_class::HIDClass;
+use windowmaster_firmware::encoder::{Delta, PollError};
 use windowmaster_firmware::{Channel, Encoder, Led, Switch};
 
 #[gen_hid_descriptor(
-    (collection = APPLICATION,) = {
-        #[item_settings relative] encoders=input;
-        #[packed_bits 6] buttons=input;
-        #[packed_bits 6] leds=output;
+    (collection = APPLICATION, usage_page = VENDOR_DEFINED_START, usage = 0x01) = {
+        (usage_page = VENDOR_DEFINED_START, usage = 0x02) = {
+            #[item_settings data,variable,relative] encoders=input;
+        };
+        (usage_page = VENDOR_DEFINED_START, usage = 0x02) = {
+            #[packed_bits 6] #[item_settings data,variable,absolute] buttons=input;
+        };
+        (usage_page = VENDOR_DEFINED_START, usage = 0x02) = {
+            #[packed_bits 6] #[item_settings data,variable,absolute] leds=output;
+        };
     }
 )]
+#[derive(Default)]
 struct Report {
     encoders: [i8; 6],
     buttons: u8,
@@ -47,7 +54,7 @@ macro_rules! build_channel {
 #[rt::entry]
 fn main() -> ! {
     let mut dp = stm32::Peripherals::take().unwrap();
-    let cp = stm32::CorePeripherals::take().unwrap();
+    //let cp = stm32::CorePeripherals::take().unwrap();
 
     let mut rcc = dp
         .RCC
@@ -58,8 +65,6 @@ fn main() -> ! {
         .pclk(24.mhz())
         .freeze(&mut dp.FLASH);
 
-    let mut delay = Delay::new(cp.SYST, &rcc);
-
     // Unpack items used inside critical section
     let usb = dp.USB;
     let gpioa = dp.GPIOA.split(&mut rcc);
@@ -67,13 +72,18 @@ fn main() -> ! {
     let gpioc = dp.GPIOC.split(&mut rcc);
     let gpiof = dp.GPIOF.split(&mut rcc);
 
-    let (channel_1, channel_2, channel_3, channel_4, channel_5, channel_6, usb_bus) =
+    let (mut channel_1, channel_2, channel_3, channel_4, channel_5, channel_6, usb_bus) =
         interrupt_free(|guard| {
             let channel_1 = build_channel! {
-                enc_a: gpioc.pc14,
-                enc_b: gpioc.pc13,
-                sw: gpiob.pb3,
-                ind: gpiob.pb4,
+                //XXX Temporary for dev board pinout
+                //enc_a: gpioc.pc14,
+                //enc_b: gpioc.pc13,
+                //sw: gpiob.pb3,
+                //ind: gpiob.pb4,
+                enc_a: gpioa.pa5,
+                enc_b: gpioa.pa4,
+                sw: gpioc.pc4,
+                ind: gpiob.pb12,
                 guard,
             };
             let channel_2 = build_channel! {
@@ -99,13 +109,17 @@ fn main() -> ! {
             };
             let channel_5 = build_channel! {
                 enc_a: gpioa.pa6,
-                enc_b: gpioa.pa5,
+                //XXX Temporary for dev board pinout
+                //enc_b: gpioa.pa5,
+                enc_b: gpioa.pa8,
                 sw: gpiof.pf0,
                 ind: gpioa.pa1,
                 guard,
             };
             let channel_6 = build_channel! {
-                enc_a: gpioa.pa4,
+                //XXX Temporary for dev board pinout
+                //enc_a: gpioa.pa4,
+                enc_a: gpioa.pa9,
                 enc_b: gpioa.pa3,
                 sw: gpioc.pc15,
                 ind: gpioa.pa2,
@@ -133,7 +147,24 @@ fn main() -> ! {
         .build();
 
     loop {
-        if usb_dev.poll(&mut [&mut hid]) {}
-        delay.delay_ms(5u8);
+        if usb_dev.poll(&mut [&mut hid]) {
+            let _ = hid.push_input(&Report::default());
+            let mut buffer = [0u8; 1];
+            if let Ok(read_bytes) = hid.pull_raw_output(&mut buffer) {
+                if read_bytes > 0 {}
+            }
+        }
+        if channel_1.switch().poll().unwrap() {
+            match channel_1.switch().is_pressed() {
+                true => channel_1.led().turn_on().unwrap(),
+                false => channel_1.led().turn_off().unwrap(),
+            }
+        }
+        match channel_1.encoder().poll() {
+            Ok(Delta::Clockwise) => channel_1.led().turn_on().unwrap(),
+            Ok(Delta::Counterclockwise) => channel_1.led().turn_off().unwrap(),
+            Ok(Delta::None) | Err(PollError::Skipped) => {}
+            other => panic!("{:?}", other),
+        }
     }
 }

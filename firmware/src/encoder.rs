@@ -21,21 +21,21 @@ impl<A: InputPin, B: InputPin> Encoder<A, B> {
     ///
     /// Returns an offset corresponding to the number of steps traveled (-1, 0, or 1), or an error
     /// if the input pins failed or if a step was skipped.
-    pub fn poll(&mut self) -> Result<i8, PollError<A, B>> {
+    pub fn poll(&mut self) -> Result<Delta, PollError<A::Error, B::Error>> {
         let a = self.pin_a.is_high().map_err(PollError::PinA)?;
         let b = self.pin_b.is_high().map_err(PollError::PinB)?;
         let new_index = index(a, b);
 
         let result = if let Some(old_index) = self.old_index {
             match (new_index + (4 - old_index)) % 4 {
-                0 => Ok(0),
-                1 => Ok(1),
+                0 => Ok(Delta::None),
+                1 => Ok(Delta::Clockwise),
                 2 => Err(PollError::Skipped),
-                3 => Ok(-1),
+                3 => Ok(Delta::Counterclockwise),
                 _ => unreachable!(),
             }
         } else {
-            Ok(0)
+            Ok(Delta::None)
         };
         self.old_index = Some(new_index);
         result
@@ -51,13 +51,20 @@ fn index(a: bool, b: bool) -> i8 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Delta {
+    Clockwise,
+    Counterclockwise,
+    None,
+}
+
 #[derive(Debug)]
-pub enum PollError<A: InputPin, B: InputPin> {
+pub enum PollError<A, B> {
     /// An error that occurred while reading Pin A.
-    PinA(A::Error),
+    PinA(A),
 
     /// An error that occurred while reading Pin B.
-    PinB(B::Error),
+    PinB(B),
 
     /// A skipped step was detected.
     Skipped,
