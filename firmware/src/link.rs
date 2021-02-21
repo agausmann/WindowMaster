@@ -63,7 +63,7 @@ where
             let mut buffer = [0u8; 1];
             if let Ok(read_bytes) = self.hid.pull_raw_output(&mut buffer) {
                 if read_bytes > 0 {
-                    //TODO leds
+                    self.report.leds = buffer[0];
                 }
             }
         }
@@ -92,10 +92,10 @@ where
         (usage_page = VENDOR_DEFINED_START, usage = 0x02) = {
             #[item_settings data,variable,relative] encoders=input;
         };
-        (usage_page = VENDOR_DEFINED_START, usage = 0x02) = {
+        (usage_page = VENDOR_DEFINED_START, usage = 0x03) = {
             #[packed_bits 6] #[item_settings data,variable,absolute] buttons=input;
         };
-        (usage_page = VENDOR_DEFINED_START, usage = 0x02) = {
+        (usage_page = VENDOR_DEFINED_START, usage = 0x04) = {
             #[packed_bits 6] #[item_settings data,variable,absolute] leds=output;
         };
     }
