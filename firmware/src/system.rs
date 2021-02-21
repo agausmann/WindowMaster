@@ -5,13 +5,15 @@ use crate::indicator::{self, Indicator};
 use crate::link::{self, Link};
 use alloc::boxed::Box;
 use cortex_m::interrupt::CriticalSection;
+use stm32f0xx_hal::delay::Delay;
 use stm32f0xx_hal::gpio::{gpioa, gpiob, gpioc, gpiof, Floating, Input, Output, PullUp, PushPull};
 use stm32f0xx_hal::prelude::*;
-use stm32f0xx_hal::stm32::Peripherals;
+use stm32f0xx_hal::stm32::{CorePeripherals, Peripherals};
 use stm32f0xx_hal::usb::{self, UsbBus};
 
 pub struct System<StatusLed, Channel1, Channel2, Channel3, Channel4, Channel5, Channel6, HostLink> {
     status_led: StatusLed,
+    delay: Delay,
     channel_1: Channel1,
     channel_2: Channel2,
     channel_3: Channel3,
@@ -26,6 +28,7 @@ impl<StatusLed, Channel1, Channel2, Channel3, Channel4, Channel5, Channel6, Host
 {
     pub fn from_parts(
         status_led: StatusLed,
+        delay: Delay,
         channel_1: Channel1,
         channel_2: Channel2,
         channel_3: Channel3,
@@ -36,6 +39,7 @@ impl<StatusLed, Channel1, Channel2, Channel3, Channel4, Channel5, Channel6, Host
     ) -> Self {
         Self {
             status_led,
+            delay,
             channel_1,
             channel_2,
             channel_3,
@@ -90,7 +94,7 @@ pub type Rev1System = System<
 >;
 
 impl Rev1System {
-    pub fn new(mut dp: Peripherals, cs: &CriticalSection) -> Self {
+    pub fn new(mut dp: Peripherals, cp: CorePeripherals, cs: &CriticalSection) -> Self {
         let mut rcc = dp
             .RCC
             .configure()
@@ -106,6 +110,7 @@ impl Rev1System {
         let gpiof = dp.GPIOF.split(&mut rcc);
 
         let status_led = indicator::ActiveLow::new(gpiob.pb12.into_push_pull_output(cs));
+        let delay = Delay::new(cp.SYST, &rcc);
 
         let channel_1 = ChannelImpl::new(
             encoder::Quadrature::new(gpioc.pc14, gpioc.pc13),
@@ -147,6 +152,7 @@ impl Rev1System {
 
         System {
             status_led,
+            delay,
             channel_1,
             channel_2,
             channel_3,
@@ -175,7 +181,7 @@ pub type DiscoverySystem = System<
 >;
 
 impl DiscoverySystem {
-    pub fn new(mut dp: Peripherals, cs: &CriticalSection) -> Self {
+    pub fn new(mut dp: Peripherals, cp: CorePeripherals, cs: &CriticalSection) -> Self {
         let mut rcc = dp
             .RCC
             .configure()
@@ -190,6 +196,7 @@ impl DiscoverySystem {
         let gpioc = dp.GPIOC.split(&mut rcc);
 
         let status_led = indicator::ActiveHigh::new(gpioc.pc8.into_push_pull_output(cs));
+        let delay = Delay::new(cp.SYST, &rcc);
 
         let channel_1 = ChannelImpl::new(
             encoder::Quadrature::new(gpioa.pa5, gpioa.pa4),
@@ -211,6 +218,7 @@ impl DiscoverySystem {
 
         System {
             status_led,
+            delay,
             channel_1,
             channel_2,
             channel_3,
@@ -234,6 +242,14 @@ where
     Channel6: Channel,
     HostLink: Link,
 {
+    pub fn status_led(&mut self) -> &mut StatusLed {
+        &mut self.status_led
+    }
+
+    pub fn delay(&mut self) -> &mut Delay {
+        &mut self.delay
+    }
+
     pub fn run(&mut self) -> ! {
         fn update_channel<HostLink, ChannelX>(
             host_link: &mut HostLink,
