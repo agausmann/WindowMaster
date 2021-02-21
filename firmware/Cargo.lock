@@ -10,6 +10,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-cortex-m"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a67ad0fe14be887ed94e5722d14861c1877b128edbda2dd372e64d5243d614ae"
+dependencies = [
+ "cortex-m 0.6.7",
+ "linked_list_allocator",
+]
+
+[[package]]
+name = "anyhow"
+version = "1.0.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afddf7f520a80dbf76e6f50a35bca42a2331ef227a28b3b6dc5c2e2338d114b1"
+
+[[package]]
 name = "as-slice"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -159,6 +175,12 @@ dependencies = [
  "typenum",
  "version_check",
 ]
+
+[[package]]
+name = "linked_list_allocator"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "822add9edb1860698b79522510da17bef885171f75aa395cff099d770c609c24"
 
 [[package]]
 name = "nb"
@@ -388,6 +410,8 @@ dependencies = [
 name = "windowmaster-firmware"
 version = "0.1.0"
 dependencies = [
+ "alloc-cortex-m",
+ "anyhow",
  "cortex-m 0.7.1",
  "cortex-m-rt",
  "embedded-hal",

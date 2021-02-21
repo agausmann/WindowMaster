@@ -1,11 +1,10 @@
 #![no_std]
 
+extern crate alloc;
+
+pub mod button;
 pub mod channel;
 pub mod encoder;
-pub mod led;
-pub mod switch;
-
-pub use self::channel::Channel;
-pub use self::encoder::Encoder;
-pub use self::led::Led;
-pub use self::switch::Switch;
+pub mod indicator;
+pub mod link;
+pub mod system;

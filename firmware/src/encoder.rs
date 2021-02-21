@@ -1,13 +1,40 @@
+use core::convert::Infallible;
 use embedded_hal::digital::v2::InputPin;
 
+/// A relative, incremental encoder that can detect and report single steps forward and backward.
+pub trait Encoder {
+    type Error;
+
+    /// Polls the encoder for updates, and returns the resulting step, if any.
+    fn poll(&mut self) -> Result<Step, Self::Error>;
+}
+
+/// A step increment returned by an [`Encoder`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    None,
+    Backward,
+    Forward,
+}
+
+impl Step {
+    pub fn value(self) -> i8 {
+        match self {
+            Self::None => 0,
+            Self::Backward => -1,
+            Self::Forward => 1,
+        }
+    }
+}
+
 /// A quadrature encoder peripheral.
-pub struct Encoder<A: InputPin, B: InputPin> {
+pub struct Quadrature<A, B> {
     pin_a: A,
     pin_b: B,
     old_index: Option<i8>,
 }
 
-impl<A: InputPin, B: InputPin> Encoder<A, B> {
+impl<A, B> Quadrature<A, B> {
     /// Creates a new encoder from the given input pins.
     pub fn new(pin_a: A, pin_b: B) -> Self {
         Self {
@@ -16,26 +43,30 @@ impl<A: InputPin, B: InputPin> Encoder<A, B> {
             old_index: None,
         }
     }
+}
 
-    /// Reads the input pins and updates the encoder state.
-    ///
-    /// Returns an offset corresponding to the number of steps traveled (-1, 0, or 1), or an error
-    /// if the input pins failed or if a step was skipped.
-    pub fn poll(&mut self) -> Result<Delta, PollError<A::Error, B::Error>> {
-        let a = self.pin_a.is_high().map_err(PollError::PinA)?;
-        let b = self.pin_b.is_high().map_err(PollError::PinB)?;
+impl<A, B> Encoder for Quadrature<A, B>
+where
+    A: InputPin,
+    B: InputPin,
+{
+    type Error = Error<A::Error, B::Error>;
+
+    fn poll(&mut self) -> Result<Step, Self::Error> {
+        let a = self.pin_a.is_high().map_err(Error::PinA)?;
+        let b = self.pin_b.is_high().map_err(Error::PinB)?;
         let new_index = index(a, b);
 
         let result = if let Some(old_index) = self.old_index {
             match (new_index + (4 - old_index)) % 4 {
-                0 => Ok(Delta::None),
-                1 => Ok(Delta::Clockwise),
-                2 => Err(PollError::Skipped),
-                3 => Ok(Delta::Counterclockwise),
+                0 => Ok(Step::None),
+                1 => Ok(Step::Forward),
+                2 => Err(Error::Skipped),
+                3 => Ok(Step::Backward),
                 _ => unreachable!(),
             }
         } else {
-            Ok(Delta::None)
+            Ok(Step::None)
         };
         self.old_index = Some(new_index);
         result
@@ -51,15 +82,8 @@ fn index(a: bool, b: bool) -> i8 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Delta {
-    Clockwise,
-    Counterclockwise,
-    None,
-}
-
 #[derive(Debug)]
-pub enum PollError<A, B> {
+pub enum Error<A, B> {
     /// An error that occurred while reading Pin A.
     PinA(A),
 
@@ -70,12 +94,26 @@ pub enum PollError<A, B> {
     Skipped,
 }
 
+#[derive(Default)]
+pub struct Disabled;
+
+impl Encoder for Disabled {
+    type Error = Infallible;
+
+    fn poll(&mut self) -> Result<Step, Self::Error> {
+        Ok(Step::None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use embedded_hal_mock::pin;
+    use embedded_hal_mock::pin::Transaction;
+    use embedded_hal_mock::{High, Low};
+    use Step::{Backward, Forward, None};
 
-    fn assert_polls(pin_a: &[pin::Transaction], pin_b: &[pin::Transaction], polls: &[i8]) {
+    fn assert_polls(pin_a: &[pin::Transaction], pin_b: &[pin::Transaction], polls: &[Step]) {
         let mut pin_a = pin::Mock::new(pin_a);
         let mut pin_b = pin::Mock::new(pin_b);
         let mut encoder = Encoder::new(pin_a.clone(), pin_b.clone());
@@ -87,44 +125,44 @@ mod tests {
     }
 
     #[test]
-    fn clockwise() {
+    fn forward() {
         assert_polls(
             &[
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::Low),
+                Transaction::get(Low),
+                Transaction::get(High),
+                Transaction::get(High),
+                Transaction::get(Low),
+                Transaction::get(Low),
             ],
             &[
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::Low),
+                Transaction::get(Low),
+                Transaction::get(Low),
+                Transaction::get(High),
+                Transaction::get(High),
+                Transaction::get(Low),
             ],
-            &[0, 1, 1, 1, 1],
+            &[None, Forward, Forward, Forward, Forward],
         );
     }
 
     #[test]
-    fn counter_clockwise() {
+    fn backward() {
         assert_polls(
             &[
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::Low),
+                Transaction::get(Low),
+                Transaction::get(Low),
+                Transaction::get(High),
+                Transaction::get(High),
+                Transaction::get(Low),
             ],
             &[
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::High),
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::Low),
+                Transaction::get(Low),
+                Transaction::get(High),
+                Transaction::get(High),
+                Transaction::get(Low),
+                Transaction::get(Low),
             ],
-            &[0, -1, -1, -1, -1],
+            &[None, Backward, Backward, Backward, Backward],
         );
     }
 
@@ -132,15 +170,9 @@ mod tests {
     #[should_panic]
     fn skipped() {
         assert_polls(
-            &[
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::High),
-            ],
-            &[
-                pin::Transaction::get(pin::State::Low),
-                pin::Transaction::get(pin::State::High),
-            ],
-            &[0, 1],
+            &[Transaction::get(Low), Transaction::get(High)],
+            &[Transaction::get(Low), Transaction::get(High)],
+            &[None, Forward],
         );
     }
 }

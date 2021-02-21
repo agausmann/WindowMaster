@@ -1,44 +1,79 @@
-use crate::encoder::Encoder;
-use crate::led::Led;
-use crate::switch::Switch;
-use embedded_hal::digital::v2::{InputPin, OutputPin};
+use crate::button;
+use crate::encoder;
+use crate::indicator;
 
-pub struct Channel<A, B, S, L>
-where
-    A: InputPin,
-    B: InputPin,
-    S: InputPin,
-    L: OutputPin,
-{
-    encoder: Encoder<A, B>,
-    switch: Switch<S>,
-    led: Led<L>,
+pub trait Channel {
+    type Encoder: encoder::Encoder;
+    type Button: button::Button;
+    type Indicator: indicator::Indicator;
+
+    fn encoder(&mut self) -> &mut Self::Encoder;
+
+    fn button(&mut self) -> &mut Self::Button;
+
+    fn indicator(&mut self) -> &mut Self::Indicator;
 }
 
-impl<A, B, S, L> Channel<A, B, S, L>
-where
-    A: InputPin,
-    B: InputPin,
-    S: InputPin,
-    L: OutputPin,
-{
-    pub fn new(encoder: Encoder<A, B>, switch: Switch<S>, led: Led<L>) -> Self {
+pub struct ChannelImpl<Encoder, Button, Indicator> {
+    encoder: Encoder,
+    button: Button,
+    indicator: Indicator,
+}
+
+impl<Encoder, Button, Indicator> ChannelImpl<Encoder, Button, Indicator> {
+    pub fn new(encoder: Encoder, button: Button, indicator: Indicator) -> Self {
         Self {
             encoder,
-            switch,
-            led,
+            button,
+            indicator,
         }
     }
+}
 
-    pub fn encoder(&mut self) -> &mut Encoder<A, B> {
+impl<Encoder, Button, Indicator> Channel for ChannelImpl<Encoder, Button, Indicator>
+where
+    Encoder: encoder::Encoder,
+    Button: button::Button,
+    Indicator: indicator::Indicator,
+{
+    type Encoder = Encoder;
+    type Button = Button;
+    type Indicator = Indicator;
+
+    fn encoder(&mut self) -> &mut Self::Encoder {
         &mut self.encoder
     }
 
-    pub fn switch(&mut self) -> &mut Switch<S> {
-        &mut self.switch
+    fn button(&mut self) -> &mut Self::Button {
+        &mut self.button
     }
 
-    pub fn led(&mut self) -> &mut Led<L> {
-        &mut self.led
+    fn indicator(&mut self) -> &mut Self::Indicator {
+        &mut self.indicator
+    }
+}
+
+#[derive(Default)]
+pub struct Disabled {
+    encoder: encoder::Disabled,
+    button: button::Disabled,
+    indicator: indicator::Disabled,
+}
+
+impl Channel for Disabled {
+    type Encoder = encoder::Disabled;
+    type Button = button::Disabled;
+    type Indicator = indicator::Disabled;
+
+    fn encoder(&mut self) -> &mut Self::Encoder {
+        &mut self.encoder
+    }
+
+    fn button(&mut self) -> &mut Self::Button {
+        &mut self.button
+    }
+
+    fn indicator(&mut self) -> &mut Self::Indicator {
+        &mut self.indicator
     }
 }
