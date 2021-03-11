@@ -67,7 +67,9 @@ quick reference while programming:
 
 ## Flashing
 
-The focus of this section will be on the specifics of flashing on this board. I expect the reader to know generally how to program STM32 devices; there's plenty of other resources on the Internet that explain it better than I ever could.
+The focus of this section will be on the specifics of flashing on this board. I
+expect the reader to know generally how to program STM32 devices; there's plenty
+of other resources on the Internet that explain it better than I ever could.
 
 There are two ways that the STM32 chip can be flashed: the USB DFU protocol,
 and the ST-Link debug interface.
@@ -78,13 +80,18 @@ To start the device in DFU mode:  While holding down the DFU button, connect
 the USB cable so that it powers on and connects to the computer. Once it has
 turned on, you can let go of DFU.
 
-(_Note_: If the device is already connected, you can enter DFU mode without disconnecting by holding down DFU and pressing and releasing RESET. Again, you can release DFU once it has reset.)
+(_Note_: If the device is already connected, you can enter DFU mode without
+disconnecting by holding down DFU and pressing and releasing RESET. Again, you
+can release DFU once it has reset.)
 
-Once the device is in DFU mode, you can use a tool like [DfuSe] or [dfu-util] on the host computer to connect to the device and flash firmware binaries.
+Once the device is in DFU mode, you can use a tool like [DfuSe] or [dfu-util] on
+the host computer to connect to the device and flash firmware binaries.
 
 ### ST-Link
 
-There is a spot for an ST-Link / SWD breakout header at the top of the PCB, in between the reset switch and USB port. The pinout of that port is designed to match the SWD header on Discovery/Nucleo boards, so from left to right:
+There is a spot for an ST-Link / SWD breakout header at the top of the PCB, in
+between the reset switch and USB port. The pinout of that port is designed to
+match the SWD header on Discovery/Nucleo boards, so from left to right:
 
 1. 3v3 power (not connected in rev1, you have to supply power over USB)
 2. SWCLK
@@ -93,7 +100,9 @@ There is a spot for an ST-Link / SWD breakout header at the top of the PCB, in b
 5. NRST
 6. Not connected (normally SWO, which is unsupported by this chip).
 
-Connect an ST-Link to that header, and connect both the ST-Link and the PCB to the computer via USB. Then you can flash using whatever ST-Link compatible tool or method you prefer. (openOCD, cargo-flash, etc)
+Connect an ST-Link to that header, and connect both the ST-Link and the PCB to
+the computer via USB. Then you can flash using whatever ST-Link compatible tool
+or method you prefer. (openOCD, cargo-flash, etc)
 
 [STM32F072C8]: https://www.st.com/en/microcontrollers-microprocessors/stm32f072c8.html
 [DfuSe]: https://www.st.com/en/development-tools/stsw-stm32080.html#overview
