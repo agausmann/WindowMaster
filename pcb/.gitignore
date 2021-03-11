@@ -2,3 +2,6 @@
 /fp-info-cache
 *-bak
 windowmaster-cache.lib
+
+# Generated fab files
+/gerber
