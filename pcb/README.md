@@ -18,7 +18,7 @@ that can or must be surface-mounted, are picked from the [JLCPCB SMT Parts
 Library](https://jlcpcb.com/parts), if there is a suitable part there. This
 makes it more convenient to fabricate and assemble, as they will do most of the
 work. Everything else is picked to be easy to hand-solder with an iron, which
-generally MEans through-hole or large tabs.
+generally Means through-hole or large tabs.
 
 ## Documentation/Pinout
 
