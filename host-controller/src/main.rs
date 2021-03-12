@@ -5,6 +5,7 @@ pub mod bindings {
 // Copy-paste these paths to the `build!` macro in build.rs
 use bindings::{
     windows::win32::audio::IPropertyStore,
+    windows::win32::automation::VARENUM,
     windows::win32::core_audio::{
         EDataFlow, IAudioSessionControl2, IAudioSessionEnumerator, IAudioSessionManager2,
         IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume,
@@ -26,13 +27,12 @@ use std::ptr;
 use widestring::U16CStr;
 use windows::{ErrorCode, Guid, Interface};
 
+// Constants that aren't yet provided in the Windows bindings
 const DEVICE_STATE_ACTIVE: u32 = 0x1;
 const STGM_READ: u32 = 0x0;
-const VT_EMPTY: u16 = 0;
-const VT_LPWSTR: u16 = 31;
-// {A45C254E-DF1C-4EFD-8020-67D146A850E0} 14
 #[allow(non_upper_case_globals)]
 const PKEY_Device_FriendlyName: PROPERTYKEY = PROPERTYKEY {
+    // {A45C254E-DF1C-4EFD-8020-67D146A850E0} 14
     fmtid: Guid::from_values(
         0xA45C254E,
         0xDF1C,
@@ -199,20 +199,20 @@ impl From<PROPVARIANT> for Property {
                 PROPVARIANT {
                     anonymous:
                         PROPVARIANT_0 {
-                            anonymous: PROPVARIANT_0_0_abi { vt: VT_EMPTY, .. },
+                            anonymous: PROPVARIANT_0_0_abi { vt, .. },
                         },
-                } => Property::Empty,
+                } if vt == VARENUM::VT_EMPTY.0 as _ => Property::Empty,
                 PROPVARIANT {
                     anonymous:
                         PROPVARIANT_0 {
                             anonymous:
                                 PROPVARIANT_0_0_abi {
-                                    vt: VT_LPWSTR,
+                                    vt,
                                     anonymous: PROPVARIANT_0_0_0_abi { pwsz_val },
                                     ..
                                 },
                         },
-                } => Property::Pwstr(pwsz_val),
+                } if vt == VARENUM::VT_LPWSTR.0 as _ => Property::Pwstr(pwsz_val),
                 _ => unimplemented!(),
             }
         }
@@ -225,7 +225,7 @@ impl From<Property> for PROPVARIANT {
             Property::Empty => PROPVARIANT {
                 anonymous: PROPVARIANT_0 {
                     anonymous: PROPVARIANT_0_0_abi {
-                        vt: VT_EMPTY,
+                        vt: VARENUM::VT_EMPTY.0 as _,
                         w_reserved1: 0,
                         w_reserved2: 0,
                         w_reserved3: 0,
