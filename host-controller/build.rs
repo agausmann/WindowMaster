@@ -1,5 +1,6 @@
 fn main() {
     windows::build!(
+        // audio.rs
         windows::win32::audio::IPropertyStore,
         windows::win32::automation::VARENUM,
         windows::win32::core_audio::{
