@@ -4,10 +4,12 @@ mod bindings {
 }
 
 mod audio;
+mod hid;
 
 use std::error::Error;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
-    audio::enumerate()?;
+    //audio::enumerate()?;
+    hid::poll()?;
     Ok(())
 }

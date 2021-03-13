@@ -111,13 +111,13 @@ pub fn enumerate() -> Result<(), Box<dyn Error>> {
                     .and_some(session)?
                     .cast::<IAudioSessionControl2>()?
             };
-            // let volume_control = match session.cast::<ISimpleAudioVolume>() {
-            //     Ok(x) => x,
-            //     _ => {
-            //         println!("(skipped)");
-            //         continue;
-            //     }
-            // };
+            let volume_control = match session.cast::<ISimpleAudioVolume>() {
+                Ok(x) => x,
+                _ => {
+                    println!("(skipped)");
+                    continue;
+                }
+            };
             // unsafe {
             //     volume_control
             //         .SetMute(BOOL::from(false), ptr::null_mut())
