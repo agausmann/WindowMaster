@@ -124,8 +124,8 @@ impl Rev1System {
         );
         let channel_3 = ChannelImpl::new(
             encoder::Quadrature::new(gpiob.pb7, gpiob.pb6),
-            button::ActiveLow::new(gpioa.pa14.into_pull_up_input(cs)),
-            indicator::ActiveLow::new(gpioa.pa13.into_push_pull_output(cs)),
+            button::ActiveLow::new(gpioa.pb14.into_pull_up_input(cs)),
+            indicator::ActiveLow::new(gpioa.pb15.into_push_pull_output(cs)),
         );
         let channel_4 = ChannelImpl::new(
             encoder::Quadrature::new(gpiob.pb0, gpioa.pa7),
