@@ -69,8 +69,8 @@ pub type Rev1System = System<
     // Channel 3
     ChannelImpl<
         encoder::Quadrature<gpiob::PB7<Input<Floating>>, gpiob::PB6<Input<Floating>>>,
-        button::ActiveLow<gpioa::PA14<Input<PullUp>>>,
-        indicator::ActiveLow<gpioa::PA13<Output<PushPull>>>,
+        button::ActiveLow<gpiob::PB14<Input<PullUp>>>,
+        indicator::ActiveLow<gpiob::PB15<Output<PushPull>>>,
     >,
     // Channel 4
     ChannelImpl<
@@ -124,8 +124,8 @@ impl Rev1System {
         );
         let channel_3 = ChannelImpl::new(
             encoder::Quadrature::new(gpiob.pb7, gpiob.pb6),
-            button::ActiveLow::new(gpioa.pb14.into_pull_up_input(cs)),
-            indicator::ActiveLow::new(gpioa.pb15.into_push_pull_output(cs)),
+            button::ActiveLow::new(gpiob.pb14.into_pull_up_input(cs)),
+            indicator::ActiveLow::new(gpiob.pb15.into_push_pull_output(cs)),
         );
         let channel_4 = ChannelImpl::new(
             encoder::Quadrature::new(gpiob.pb0, gpioa.pa7),
