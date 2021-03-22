@@ -5,26 +5,110 @@ use crate::bindings::{
         SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
     },
     windows::win32::file_system::{
-        CreateFileW, FILE_ACCESS_FLAGS, FILE_CREATE_FLAGS, FILE_FLAGS_AND_ATTRIBUTES,
-        FILE_SHARE_FLAGS,
+        CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATE_FLAGS,
+        FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_FLAGS,
     },
-    windows::win32::hid::{
-        HidD_GetAttributes, HidD_GetHidGuid, HidD_GetManufacturerString, HidD_GetProductString,
-        HIDD_ATTRIBUTES,
-    },
+    windows::win32::hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
     windows::win32::system_services::{HANDLE, PWSTR},
     windows::win32::windows_and_messaging::HWND,
     windows::win32::windows_programming::CloseHandle,
 };
 
-use std::error::Error;
-use widestring::U16CStr;
+use std::cell::Cell;
+use std::convert::{TryFrom, TryInto};
+use std::ffi::c_void;
+use std::marker::PhantomData;
 
 const DIGCF_DEVICEINTERFACE: u32 = 0x10;
 const DIGCF_PRESENT: u32 = 0x2;
 const ERROR_NO_MORE_ITEMS: u32 = 0x80070103;
 
-pub fn poll() -> Result<(), Box<dyn Error>> {
+#[derive(Debug)]
+struct Device {
+    handle: HANDLE,
+    device_type: DeviceType,
+
+    // Just as a precaution, prevent Device from being used by multiple threads simultaneously.
+    _not_sync: PhantomData<Cell<()>>,
+}
+
+impl Device {
+    /// # Safety
+    /// This function takes ownership of the passed-in handle, meaning it should have exclusive
+    /// access to that handle object, and the handle will be closed when the returned `Device`
+    /// object is dropped. If the function returns `None`, ownership is relinquished, and the
+    /// caller is responsible for closing the handle.
+    unsafe fn from_handle(handle: HANDLE) -> Option<Self> {
+        let device_type = DeviceType::detect(handle)?;
+        Some(Self {
+            handle,
+            device_type,
+            _not_sync: PhantomData,
+        })
+    }
+
+    fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        //let output_report: [u8; 2] = [0x0, 0x00]; /* LEDs off */
+        let output_report: [u8; 2] = [0x0, 0x3f]; /* LEDs on */
+        let mut bytes_written: u32 = 0;
+        unsafe {
+            WriteFile(
+                self.handle,
+                output_report.as_ptr() as *const c_void,
+                u32::try_from(output_report.len()).unwrap(),
+                &mut bytes_written,
+                std::ptr::null_mut(),
+            )
+            .ok()?
+        };
+
+        let mut input_report: [u8; 8] = [0; 8];
+        let mut bytes_read: u32 = 0;
+        unsafe {
+            ReadFile(
+                self.handle,
+                input_report.as_mut_ptr() as *mut c_void,
+                u32::try_from(input_report.len()).unwrap(),
+                &mut bytes_read,
+                std::ptr::null_mut(),
+            )
+            .ok()?
+        };
+        println!("{:?}", &input_report[..bytes_read as _]);
+
+        Ok(())
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.handle) };
+    }
+}
+
+#[derive(Debug)]
+enum DeviceType {
+    WindowMasterRev1,
+}
+
+impl DeviceType {
+    fn detect(handle: HANDLE) -> Option<Self> {
+        let mut attributes: HIDD_ATTRIBUTES = Default::default();
+        attributes.size = std::mem::size_of_val(&attributes).try_into().unwrap();
+        unsafe { HidD_GetAttributes(handle, &mut attributes) };
+
+        match (
+            attributes.vendor_id,
+            attributes.product_id,
+            attributes.version_number,
+        ) {
+            (0x1209, 0x4573, 0x0010) => Some(Self::WindowMasterRev1),
+            _ => None,
+        }
+    }
+}
+
+pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
     let mut hid_guid = Default::default();
     unsafe { HidD_GetHidGuid(&mut hid_guid) };
 
@@ -36,6 +120,9 @@ pub fn poll() -> Result<(), Box<dyn Error>> {
             DIGCF_DEVICEINTERFACE | DIGCF_PRESENT,
         )
     };
+
+    let mut devices = Vec::new();
+
     for index in 0.. {
         let mut device_interface: SP_DEVICE_INTERFACE_DATA = Default::default();
         device_interface.cb_size = std::mem::size_of_val(&device_interface) as _;
@@ -74,7 +161,7 @@ pub fn poll() -> Result<(), Box<dyn Error>> {
             CreateFileW(
                 PWSTR(device_interface_details.device_path.as_mut_ptr()),
                 FILE_ACCESS_FLAGS::FILE_GENERIC_READ | FILE_ACCESS_FLAGS::FILE_GENERIC_WRITE,
-                FILE_SHARE_FLAGS::FILE_SHARE_NONE,
+                FILE_SHARE_FLAGS::FILE_SHARE_READ | FILE_SHARE_FLAGS::FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
                 FILE_CREATE_FLAGS::OPEN_EXISTING,
                 FILE_FLAGS_AND_ATTRIBUTES::FILE_ATTRIBUTE_NORMAL,
@@ -85,28 +172,22 @@ pub fn poll() -> Result<(), Box<dyn Error>> {
             // No access
             continue;
         }
-        let mut attributes: HIDD_ATTRIBUTES = Default::default();
-        const MAX_LEN: u32 = 100;
-        let mut manu_string = vec![0u16; MAX_LEN as _];
-        let mut product_string = vec![0u16; MAX_LEN as _];
-        unsafe { HidD_GetAttributes(handle, &mut attributes) };
-        unsafe { HidD_GetManufacturerString(handle, manu_string.as_mut_ptr() as _, MAX_LEN) };
-        unsafe { HidD_GetProductString(handle, product_string.as_mut_ptr() as _, MAX_LEN) };
-        unsafe { CloseHandle(handle).ok()? };
-
-        let manu_string = U16CStr::from_slice_with_nul(&manu_string)
-            .unwrap()
-            .to_string_lossy();
-        let product_string = U16CStr::from_slice_with_nul(&product_string)
-            .unwrap()
-            .to_string_lossy();
-        println!(
-            "{:04x}:{:04x} {} {}",
-            attributes.vendor_id, attributes.product_id, manu_string, product_string
-        );
+        //SAFETY: `handle` binding is dropped after this iteration and is not held anywhere
+        // else, so the File successfully has ownership from here on.
+        // If None is returned, the handle is immediately closed.
+        if let Some(device) = unsafe { Device::from_handle(handle) } {
+            println!("{:?}", device);
+            devices.push(device);
+        } else {
+            unsafe { CloseHandle(handle).ok()? };
+        }
     }
 
-    Ok(())
+    loop {
+        for device in &mut devices {
+            device.poll()?;
+        }
+    }
 }
 
 // A sized version of SP_DEVICE_INTERFACE_DETAIL_DATA_W, can store a path of up to 1k chars.

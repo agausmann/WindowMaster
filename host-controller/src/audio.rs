@@ -18,8 +18,6 @@ use crate::bindings::windows::win32::structured_storage::{
     PROPVARIANT_0_0_0_abi, PROPVARIANT_0_0_abi, PROPVARIANT_0,
 };
 
-use std::error::Error;
-use std::ptr;
 use widestring::U16CStr;
 use windows::{ErrorCode, Guid, Interface};
 
@@ -38,7 +36,7 @@ const PKEY_Device_FriendlyName: PROPERTYKEY = PROPERTYKEY {
     pid: 14,
 };
 
-pub fn enumerate() -> Result<(), Box<dyn Error>> {
+pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
     windows::initialize_mta()?;
     let device_enumerator: IMMDeviceEnumerator = windows::create_instance(&MMDeviceEnumerator)?;
     let mut devices = None;
@@ -83,7 +81,7 @@ pub fn enumerate() -> Result<(), Box<dyn Error>> {
                 .Activate(
                     &IAudioSessionManager2::IID,
                     0,
-                    ptr::null_mut(),
+                    std::ptr::null_mut(),
                     &mut session_manager as *mut _ as _,
                 )
                 .and_some(session_manager)?
@@ -120,7 +118,7 @@ pub fn enumerate() -> Result<(), Box<dyn Error>> {
             };
             // unsafe {
             //     volume_control
-            //         .SetMute(BOOL::from(false), ptr::null_mut())
+            //         .SetMute(BOOL::from(false), std::ptr::null_mut())
             //         .unwrap();
             // }
             let mut process_id = Default::default();
