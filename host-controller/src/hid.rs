@@ -14,42 +14,63 @@ use crate::bindings::{
     windows::win32::windows_programming::CloseHandle,
 };
 
+use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::time::Instant;
 
 const DIGCF_DEVICEINTERFACE: u32 = 0x10;
 const DIGCF_PRESENT: u32 = 0x2;
 const ERROR_NO_MORE_ITEMS: u32 = 0x80070103;
 
+lazy_static! {
+    // Used to time blinking indicators.
+    static ref EPOCH: Instant = Instant::now();
+}
+
 #[derive(Debug)]
 struct Device {
     handle: HANDLE,
     device_type: DeviceType,
+    state: DeviceState,
 
-    // Just as a precaution, prevent Device from being used by multiple threads simultaneously.
+    // Just as a precaution, prevent Device from being used by multiple threads
+    // simultaneously.
     _not_sync: PhantomData<Cell<()>>,
 }
 
 impl Device {
     /// # Safety
-    /// This function takes ownership of the passed-in handle, meaning it should have exclusive
-    /// access to that handle object, and the handle will be closed when the returned `Device`
-    /// object is dropped. If the function returns `None`, ownership is relinquished, and the
-    /// caller is responsible for closing the handle.
+    /// This function takes ownership of the passed-in handle, meaning it should
+    /// have exclusive access to that handle object, and the handle will be
+    /// closed when the returned `Device` object is dropped. If the function
+    /// returns `None`, ownership is relinquished, and the caller is responsible
+    /// for closing the handle.
     unsafe fn from_handle(handle: HANDLE) -> Option<Self> {
         let device_type = DeviceType::detect(handle)?;
         Some(Self {
             handle,
             device_type,
+            state: Default::default(),
             _not_sync: PhantomData,
         })
     }
 
     fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        //let output_report: [u8; 2] = [0x0, 0x00]; /* LEDs off */
-        let output_report: [u8; 2] = [0x0, 0x3f]; /* LEDs on */
+        let mut output_report: [u8; 2] = [0x0, 0x0];
+        for i in 0..self.state.channels.len() {
+            // Set the indicator's base state according to the channel's mute
+            // state, and incorporate a momentary blink if the menu is open.
+            // Boolean to determine blink state - is true for 200ms per 1000.
+            let blink = EPOCH.elapsed().as_millis() % 1000 <= 200;
+            let indicator_on =
+                self.state.channels[i].muted ^ (self.state.channels[i].menu_open && blink);
+            if indicator_on {
+                output_report[1] |= (1 << i);
+            }
+        }
         let mut bytes_written: u32 = 0;
         unsafe {
             WriteFile(
@@ -74,7 +95,14 @@ impl Device {
             )
             .ok()?
         };
-        println!("{:?}", &input_report[..bytes_read as _]);
+        for i in 0..self.state.channels.len() {
+            self.state.channels[i].steps += input_report[1 + i] as i8 as i32;
+            if input_report[1 + self.state.channels.len()] & (1 << i) == 0 {
+                self.state.channels[i].pressed = None;
+            } else if self.state.channels[i].pressed.is_none() {
+                self.state.channels[i].pressed = Some(Instant::now());
+            }
+        }
 
         Ok(())
     }
@@ -104,6 +132,30 @@ impl DeviceType {
         ) {
             (0x1209, 0x4573, 0x0010) => Some(Self::WindowMasterRev1),
             _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct DeviceState {
+    channels: [ChannelState; 6],
+}
+
+#[derive(Debug)]
+struct ChannelState {
+    pressed: Option<Instant>,
+    steps: i32,
+    menu_open: bool,
+    muted: bool,
+}
+
+impl Default for ChannelState {
+    fn default() -> Self {
+        Self {
+            pressed: None,
+            steps: 0,
+            menu_open: true,
+            muted: true,
         }
     }
 }
@@ -172,9 +224,9 @@ pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
             // No access
             continue;
         }
-        //SAFETY: `handle` binding is dropped after this iteration and is not held anywhere
-        // else, so the File successfully has ownership from here on.
-        // If None is returned, the handle is immediately closed.
+        //SAFETY: `handle` binding is dropped after this iteration and is not
+        // held anywhere else, so the File successfully has ownership from here
+        // on. If None is returned, the handle is immediately closed.
         if let Some(device) = unsafe { Device::from_handle(handle) } {
             println!("{:?}", device);
             devices.push(device);
@@ -186,11 +238,13 @@ pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         for device in &mut devices {
             device.poll()?;
+            println!("{:?}", device.state.channels[0]);
         }
     }
 }
 
-// A sized version of SP_DEVICE_INTERFACE_DETAIL_DATA_W, can store a path of up to 1k chars.
+// A sized version of SP_DEVICE_INTERFACE_DETAIL_DATA_W, can store a path of up
+// to 1k chars.
 #[repr(C)]
 struct SP_DEVICE_INTERFACE_DETAIL_DATA_W_CUSTOM {
     cb_size: u32,
