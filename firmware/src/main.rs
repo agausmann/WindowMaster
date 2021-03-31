@@ -24,7 +24,8 @@ fn panic(info: &PanicInfo) -> ! {
     // We are in an unrecoverable error state.
     // The regular program is not going to resume, so it is safe to take control of peripherals.
     // There might be problems here, since some of the peripherals may not be in their
-    // reset state, like the PAC might assume, but I _think_ it's okay.
+    // reset state, like the PAC might assume, but I _think_ it's okay as long as the pin modes are
+    // explicitly set somewhere before being used.
     let dp = unsafe { stm32::Peripherals::steal() };
     let cp = unsafe { stm32::CorePeripherals::steal() };
 
@@ -39,6 +40,7 @@ fn panic(info: &PanicInfo) -> ! {
     }
 
     //TODO log error via debugger.
+    // writing via cortex_m_semihosting tends to hang in my testing - need to look into that.
 
     // Error has been logged, reset the system.
     system.delay().delay_ms(1000u32);
