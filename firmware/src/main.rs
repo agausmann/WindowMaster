@@ -13,8 +13,8 @@ use windowmaster_firmware::system;
 
 // Pick a system definition here:
 
-type System = system::DiscoverySystem;
-//type System = system::Rev1System;
+//type System = system::DiscoverySystem;
+type System = system::Rev1System;
 
 #[global_allocator]
 static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
