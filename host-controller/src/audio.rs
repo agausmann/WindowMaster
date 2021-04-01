@@ -1,20 +1,20 @@
 // Copy-paste these paths to the `build!` macro in build.rs
 use crate::bindings::{
-    windows::win32::audio::IPropertyStore,
-    windows::win32::automation::VARENUM,
-    windows::win32::core_audio::{
+    Windows::Win32::Audio::IPropertyStore,
+    Windows::Win32::Automation::VARENUM,
+    Windows::Win32::CoreAudio::{
         EDataFlow, IAudioSessionControl2, IAudioSessionEnumerator, IAudioSessionManager2,
         IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume,
         MMDeviceEnumerator,
     },
-    windows::win32::process_status::K32GetModuleBaseNameW,
-    windows::win32::structured_storage::PROPVARIANT,
-    windows::win32::system_services::{OpenProcess, BOOL, PROCESS_ACCESS_RIGHTS, PWSTR},
-    windows::win32::windows_programming::CloseHandle,
-    windows::win32::windows_properties_system::PROPERTYKEY,
+    Windows::Win32::ProcessStatus::K32GetModuleBaseNameW,
+    Windows::Win32::StructuredStorage::PROPVARIANT,
+    Windows::Win32::SystemServices::{OpenProcess, BOOL, PROCESS_ACCESS_RIGHTS, PWSTR},
+    Windows::Win32::WindowsProgramming::CloseHandle,
+    Windows::Win32::WindowsPropertiesSystem::PROPERTYKEY,
 };
 // Additional bindings imports that don't map to a path in `build!`
-use crate::bindings::windows::win32::structured_storage::{
+use crate::bindings::Windows::Win32::StructuredStorage::{
     PROPVARIANT_0_0_0_abi, PROPVARIANT_0_0_abi, PROPVARIANT_0,
 };
 
@@ -191,22 +191,22 @@ impl From<PROPVARIANT> for Property {
         unsafe {
             match variant {
                 PROPVARIANT {
-                    anonymous:
+                    Anonymous:
                         PROPVARIANT_0 {
-                            anonymous: PROPVARIANT_0_0_abi { vt, .. },
+                            Anonymous: PROPVARIANT_0_0_abi { vt, .. },
                         },
                 } if vt == VARENUM::VT_EMPTY.0 as _ => Property::Empty,
                 PROPVARIANT {
-                    anonymous:
+                    Anonymous:
                         PROPVARIANT_0 {
-                            anonymous:
+                            Anonymous:
                                 PROPVARIANT_0_0_abi {
                                     vt,
-                                    anonymous: PROPVARIANT_0_0_0_abi { pwsz_val },
+                                    Anonymous: PROPVARIANT_0_0_0_abi { pwszVal },
                                     ..
                                 },
                         },
-                } if vt == VARENUM::VT_LPWSTR.0 as _ => Property::Pwstr(pwsz_val),
+                } if vt == VARENUM::VT_LPWSTR.0 as _ => Property::Pwstr(pwszVal),
                 _ => unimplemented!(),
             }
         }
@@ -217,13 +217,13 @@ impl From<Property> for PROPVARIANT {
     fn from(prop: Property) -> Self {
         match prop {
             Property::Empty => PROPVARIANT {
-                anonymous: PROPVARIANT_0 {
-                    anonymous: PROPVARIANT_0_0_abi {
+                Anonymous: PROPVARIANT_0 {
+                    Anonymous: PROPVARIANT_0_0_abi {
                         vt: VARENUM::VT_EMPTY.0 as _,
-                        w_reserved1: 0,
-                        w_reserved2: 0,
-                        w_reserved3: 0,
-                        anonymous: PROPVARIANT_0_0_0_abi { b_val: 0 },
+                        wReserved1: 0,
+                        wReserved2: 0,
+                        wReserved3: 0,
+                        Anonymous: PROPVARIANT_0_0_0_abi { bVal: 0 },
                     },
                 },
             },

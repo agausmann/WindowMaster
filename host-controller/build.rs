@@ -1,31 +1,31 @@
 fn main() {
     windows::build!(
         // audio.rs
-        windows::win32::audio::IPropertyStore,
-        windows::win32::automation::VARENUM,
-        windows::win32::core_audio::{
+        Windows::Win32::Audio::IPropertyStore,
+        Windows::Win32::Automation::VARENUM,
+        Windows::Win32::CoreAudio::{
             EDataFlow, IAudioSessionControl2, IAudioSessionEnumerator, IAudioSessionManager2,
             IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume,
             MMDeviceEnumerator,
         },
-        windows::win32::process_status::K32GetModuleBaseNameW,
-        windows::win32::structured_storage::PROPVARIANT,
-        windows::win32::system_services::{OpenProcess, BOOL, PROCESS_ACCESS_RIGHTS, PWSTR},
-        windows::win32::windows_programming::CloseHandle,
-        windows::win32::windows_properties_system::PROPERTYKEY,
+        Windows::Win32::ProcessStatus::K32GetModuleBaseNameW,
+        Windows::Win32::StructuredStorage::PROPVARIANT,
+        Windows::Win32::SystemServices::{OpenProcess, BOOL, PROCESS_ACCESS_RIGHTS, PWSTR},
+        Windows::Win32::WindowsProgramming::CloseHandle,
+        Windows::Win32::WindowsPropertiesSystem::PROPERTYKEY,
 
         // hid.rs
-        windows::win32::device_and_driver_installation::{
+        Windows::Win32::DeviceAndDriverInstallation::{
             SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
             SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
         },
-        windows::win32::file_system::{
-            CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATE_FLAGS,
-            FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_FLAGS,
+        Windows::Win32::FileSystem::{
+            CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATION_DISPOSITION,
+            FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
         },
-        windows::win32::hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
-        windows::win32::system_services::{HANDLE, PWSTR},
-        windows::win32::windows_and_messaging::HWND,
-        windows::win32::windows_programming::CloseHandle,
+        Windows::Win32::Hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
+        Windows::Win32::SystemServices::{HANDLE, PWSTR},
+        Windows::Win32::WindowsAndMessaging::HWND,
+        Windows::Win32::WindowsProgramming::CloseHandle,
     );
 }

@@ -1,17 +1,17 @@
 // Copy to build.rs
 use crate::bindings::{
-    windows::win32::device_and_driver_installation::{
+    Windows::Win32::DeviceAndDriverInstallation::{
         SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
         SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
     },
-    windows::win32::file_system::{
-        CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATE_FLAGS,
-        FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_FLAGS,
+    Windows::Win32::FileSystem::{
+        CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATION_DISPOSITION,
+        FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
     },
-    windows::win32::hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
-    windows::win32::system_services::{HANDLE, PWSTR},
-    windows::win32::windows_and_messaging::HWND,
-    windows::win32::windows_programming::CloseHandle,
+    Windows::Win32::Hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
+    Windows::Win32::SystemServices::{HANDLE, PWSTR},
+    Windows::Win32::WindowsAndMessaging::HWND,
+    Windows::Win32::WindowsProgramming::CloseHandle,
 };
 
 use crate::manager::{Handle, Input, Manager, Update};
@@ -182,13 +182,13 @@ enum DeviceType {
 impl DeviceType {
     fn detect(handle: HANDLE) -> Option<Self> {
         let mut attributes: HIDD_ATTRIBUTES = Default::default();
-        attributes.size = std::mem::size_of_val(&attributes).try_into().unwrap();
+        attributes.Size = std::mem::size_of_val(&attributes).try_into().unwrap();
         unsafe { HidD_GetAttributes(handle, &mut attributes) };
 
         match (
-            attributes.vendor_id,
-            attributes.product_id,
-            attributes.version_number,
+            attributes.VendorID,
+            attributes.ProductID,
+            attributes.VersionNumber,
         ) {
             (0x1209, 0x4573, 0x0010) => Some(Self::WindowMasterRev1),
             _ => None,
@@ -253,7 +253,7 @@ pub fn enumerate(manager: &mut Manager) -> Result<(), Box<dyn std::error::Error>
 
     for index in 0.. {
         let mut device_interface: SP_DEVICE_INTERFACE_DATA = Default::default();
-        device_interface.cb_size = std::mem::size_of_val(&device_interface) as _;
+        device_interface.cbSize = std::mem::size_of_val(&device_interface) as _;
         let success = unsafe {
             SetupDiEnumDeviceInterfaces(
                 device_set,
@@ -289,9 +289,9 @@ pub fn enumerate(manager: &mut Manager) -> Result<(), Box<dyn std::error::Error>
             CreateFileW(
                 PWSTR(device_interface_details.device_path.as_mut_ptr()),
                 FILE_ACCESS_FLAGS::FILE_GENERIC_READ | FILE_ACCESS_FLAGS::FILE_GENERIC_WRITE,
-                FILE_SHARE_FLAGS::FILE_SHARE_READ | FILE_SHARE_FLAGS::FILE_SHARE_WRITE,
+                FILE_SHARE_MODE::FILE_SHARE_READ | FILE_SHARE_MODE::FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
-                FILE_CREATE_FLAGS::OPEN_EXISTING,
+                FILE_CREATION_DISPOSITION::OPEN_EXISTING,
                 FILE_FLAGS_AND_ATTRIBUTES::FILE_ATTRIBUTE_NORMAL,
                 HANDLE::default(),
             )
