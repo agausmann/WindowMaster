@@ -17,9 +17,13 @@ pub struct ActiveLow<L> {
     pin: L,
 }
 
-impl<L> ActiveLow<L> {
+impl<L> ActiveLow<L>
+where
+    L: OutputPin,
+{
     /// Create a new LED from the given output pin.
-    pub fn new(pin: L) -> Self {
+    pub fn new(mut pin: L) -> Self {
+        pin.set_high().ok();
         Self { pin }
     }
 }
@@ -44,9 +48,13 @@ pub struct ActiveHigh<L> {
     pin: L,
 }
 
-impl<L> ActiveHigh<L> {
+impl<L> ActiveHigh<L>
+where
+    L: OutputPin,
+{
     /// Create a new LED from the given output pin.
-    pub fn new(pin: L) -> Self {
+    pub fn new(mut pin: L) -> Self {
+        pin.set_low().ok();
         Self { pin }
     }
 }
