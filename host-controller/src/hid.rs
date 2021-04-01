@@ -14,6 +14,7 @@ use crate::bindings::{
     windows::win32::windows_programming::CloseHandle,
 };
 
+use crate::manager::{Handle, Input, Manager, Update};
 use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::convert::{TryFrom, TryInto};
@@ -48,27 +49,81 @@ impl Device {
     /// closed when the returned `Device` object is dropped. If the function
     /// returns `None`, ownership is relinquished, and the caller is responsible
     /// for closing the handle.
-    unsafe fn from_handle(handle: HANDLE) -> Option<Self> {
+    unsafe fn from_handle(handle: HANDLE, manager: &mut Manager) -> Option<Self> {
         let device_type = DeviceType::detect(handle)?;
+        let state = DeviceState {
+            channels: std::iter::repeat_with(|| ChannelState::new(manager.register_channel()))
+                .take(device_type.num_channels())
+                .collect(),
+        };
         Some(Self {
             handle,
             device_type,
-            state: Default::default(),
+            state,
             _not_sync: PhantomData,
         })
     }
 
+    fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        loop {
+            self.poll();
+            for channel in self.state.channels.iter_mut() {
+                if channel.pressed.is_none() && channel.pressed_changed && !channel.held {
+                    channel.handle.input(Input::ToggleMute);
+                }
+                if let Some(pressed) = channel.pressed {
+                    if pressed.elapsed().as_millis() >= 500 && !channel.held {
+                        channel.handle.input(Input::OpenMenu);
+                        channel.held = true;
+                    }
+                }
+                if channel.pressed.is_none() {
+                    channel.held = false;
+                }
+                let steps = channel.take_steps();
+                if steps != 0 {
+                    if channel.menu_open {
+                        channel.handle.input(Input::MenuStep(steps));
+                    } else {
+                        channel.handle.input(Input::VolumeStep(steps));
+                    }
+                }
+                while let Some(update) = channel.handle.poll_updates() {
+                    match update {
+                        Update::Mute(muted) => {
+                            channel.muted = muted;
+                        }
+                        Update::OpenMenu(options, index) => {
+                            channel.menu_open = true;
+                            for (i, opt) in options.iter().enumerate() {
+                                println!("{}. {}", i, opt);
+                            }
+                            println!("{}", index);
+                        }
+                        Update::CloseMenu => {
+                            channel.menu_open = false;
+                        }
+                        // Not used by this device
+                        Update::Volume(_) => {}
+                        Update::MenuIndex(index) => {
+                            println!("{}", index);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut output_report: [u8; 2] = [0x0, 0x0];
-        for i in 0..self.state.channels.len() {
+        for (i, channel) in self.state.channels.iter().enumerate() {
             // Set the indicator's base state according to the channel's mute
             // state, and incorporate a momentary blink if the menu is open.
             // Boolean to determine blink state - is true for 200ms per 1000.
             let blink = EPOCH.elapsed().as_millis() % 1000 <= 200;
-            let indicator_on =
-                self.state.channels[i].muted ^ (self.state.channels[i].menu_open && blink);
+            let indicator_on = channel.muted ^ (channel.menu_open && blink);
             if indicator_on {
-                output_report[1] |= (1 << i);
+                output_report[1] |= 1 << i;
             }
         }
         let mut bytes_written: u32 = 0;
@@ -95,12 +150,17 @@ impl Device {
             )
             .ok()?
         };
-        for i in 0..self.state.channels.len() {
-            self.state.channels[i].steps += input_report[1 + i] as i8 as i32;
-            if input_report[1 + self.state.channels.len()] & (1 << i) == 0 {
-                self.state.channels[i].pressed = None;
-            } else if self.state.channels[i].pressed.is_none() {
-                self.state.channels[i].pressed = Some(Instant::now());
+        let num_channels = self.state.channels.len();
+        for (i, channel) in self.state.channels.iter_mut().enumerate() {
+            channel.steps += input_report[1 + i] as i8 as i32;
+            let new_pressed = (input_report[1 + num_channels] & (1 << i)) != 0;
+            channel.pressed_changed = new_pressed ^ channel.pressed.is_some();
+            if channel.pressed_changed {
+                if new_pressed {
+                    channel.pressed = Some(Instant::now());
+                } else {
+                    channel.pressed = None;
+                }
             }
         }
 
@@ -134,33 +194,49 @@ impl DeviceType {
             _ => None,
         }
     }
+
+    fn num_channels(&self) -> usize {
+        match self {
+            Self::WindowMasterRev1 => 6,
+        }
+    }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct DeviceState {
-    channels: [ChannelState; 6],
+    channels: Vec<ChannelState>,
 }
 
 #[derive(Debug)]
 struct ChannelState {
+    handle: Handle,
     pressed: Option<Instant>,
+    pressed_changed: bool,
+    held: bool,
     steps: i32,
     menu_open: bool,
     muted: bool,
 }
 
-impl Default for ChannelState {
-    fn default() -> Self {
+impl ChannelState {
+    fn take_steps(&mut self) -> i32 {
+        std::mem::replace(&mut self.steps, 0)
+    }
+
+    fn new(handle: Handle) -> Self {
         Self {
+            handle,
             pressed: None,
+            pressed_changed: false,
+            held: false,
             steps: 0,
-            menu_open: true,
-            muted: true,
+            menu_open: false,
+            muted: false,
         }
     }
 }
 
-pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
+pub fn enumerate(manager: &mut Manager) -> Result<(), Box<dyn std::error::Error>> {
     let mut hid_guid = Default::default();
     unsafe { HidD_GetHidGuid(&mut hid_guid) };
 
@@ -227,7 +303,7 @@ pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
         //SAFETY: `handle` binding is dropped after this iteration and is not
         // held anywhere else, so the File successfully has ownership from here
         // on. If None is returned, the handle is immediately closed.
-        if let Some(device) = unsafe { Device::from_handle(handle) } {
+        if let Some(device) = unsafe { Device::from_handle(handle, manager) } {
             println!("{:?}", device);
             devices.push(device);
         } else {
@@ -235,12 +311,11 @@ pub fn enumerate() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    loop {
-        for device in &mut devices {
-            device.poll()?;
-            println!("{:?}", device.state.channels[0]);
-        }
+    for mut device in devices {
+        std::thread::spawn(move || device.run().unwrap());
     }
+
+    Ok(())
 }
 
 // A sized version of SP_DEVICE_INTERFACE_DETAIL_DATA_W, can store a path of up
