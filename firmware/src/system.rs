@@ -272,6 +272,14 @@ where
             }
         }
 
+        // Startup LED pattern
+        // TODO make this asynchronous / non-blocking
+        for _ in 0..2 {
+            self.status_led.turn_on().ok();
+            self.delay.delay_ms(50u8);
+            self.status_led.turn_off().ok();
+            self.delay.delay_ms(100u8);
+        }
         self.status_led.turn_on().ok();
 
         loop {
