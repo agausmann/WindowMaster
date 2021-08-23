@@ -1,17 +1,19 @@
 // Copy to build.rs
 use crate::bindings::{
-    Windows::Win32::DeviceAndDriverInstallation::{
+    Windows::Win32::Devices::DeviceAndDriverInstallation::{
         SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
         SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
     },
-    Windows::Win32::FileSystem::{
-        CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATION_DISPOSITION,
-        FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
+    Windows::Win32::Devices::HumanInterfaceDevice::{
+        HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES,
     },
-    Windows::Win32::Hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
-    Windows::Win32::SystemServices::{HANDLE, PWSTR},
-    Windows::Win32::WindowsAndMessaging::HWND,
-    Windows::Win32::WindowsProgramming::CloseHandle,
+    Windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, PWSTR},
+    Windows::Win32::Storage::FileSystem::{CreateFileW, ReadFile, WriteFile},
+};
+// Bindings imports that don't map to a path in `build!`
+use crate::bindings::Windows::Win32::Storage::FileSystem::{
+    FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 
 use crate::manager::{Handle, Input, Manager, Update};
@@ -66,7 +68,7 @@ impl Device {
 
     fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         loop {
-            self.poll();
+            self.poll()?;
             for channel in self.state.channels.iter_mut() {
                 if channel.pressed.is_none() && channel.pressed_changed && !channel.held {
                     channel.handle.input(Input::ToggleMute);
@@ -288,11 +290,11 @@ pub fn enumerate(manager: &mut Manager) -> Result<(), Box<dyn std::error::Error>
         let handle = unsafe {
             CreateFileW(
                 PWSTR(device_interface_details.device_path.as_mut_ptr()),
-                FILE_ACCESS_FLAGS::FILE_GENERIC_READ | FILE_ACCESS_FLAGS::FILE_GENERIC_WRITE,
-                FILE_SHARE_MODE::FILE_SHARE_READ | FILE_SHARE_MODE::FILE_SHARE_WRITE,
+                FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
-                FILE_CREATION_DISPOSITION::OPEN_EXISTING,
-                FILE_FLAGS_AND_ATTRIBUTES::FILE_ATTRIBUTE_NORMAL,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
                 HANDLE::default(),
             )
         };

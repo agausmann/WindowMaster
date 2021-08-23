@@ -1,5 +1,5 @@
-use std::sync::mpsc::{self, TryRecvError};
 use std::convert::TryFrom;
+use std::sync::mpsc::{self, TryRecvError};
 
 pub struct Manager {
     input_tx: mpsc::Sender<TaggedInput>,
@@ -26,7 +26,7 @@ impl Channel {
         self.muted = muted;
         self.update_tx.send(Update::Mute(self.muted)).ok();
     }
-    
+
     fn set_menu_index(&mut self, index: usize) {
         self.menu_index = index;
         self.update_tx.send(Update::MenuIndex(self.menu_index)).ok();
@@ -77,11 +77,13 @@ impl Manager {
                         channel.set_menu_index(index);
                     }
                     Input::MenuStep(steps) => {
-                            let len = i32::try_from(channel.menu_size).unwrap();
-                            channel.set_menu_index(
-                                usize::try_from(((channel.menu_index as i32 + steps) % len + len) % len)
-                                    .unwrap(),
-                            );
+                        let len = i32::try_from(channel.menu_size).unwrap();
+                        channel.set_menu_index(
+                            usize::try_from(
+                                ((channel.menu_index as i32 + steps) % len + len) % len,
+                            )
+                            .unwrap(),
+                        );
                     }
                     Input::Select => {
                         channel.close_menu();
@@ -101,7 +103,13 @@ impl Manager {
         let channel_id = self.channels.len();
         let (update_tx, update_rx) = mpsc::channel();
         let input_tx = self.input_tx.clone();
-        self.channels.push(Channel { update_tx, menu_index: 0, menu_size: 0, muted: false, volume: 0.0 });
+        self.channels.push(Channel {
+            update_tx,
+            menu_index: 0,
+            menu_size: 0,
+            muted: false,
+            volume: 0.0,
+        });
         Handle {
             channel_id,
             input_tx,

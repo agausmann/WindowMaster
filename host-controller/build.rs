@@ -1,31 +1,31 @@
 fn main() {
     windows::build!(
+        // main.rs
+        Windows::Win32::System::Com::CoInitializeEx,
+
         // audio.rs
-        Windows::Win32::Audio::IPropertyStore,
-        Windows::Win32::Automation::VARENUM,
-        Windows::Win32::CoreAudio::{
-            EDataFlow, IAudioSessionControl2, IAudioSessionEnumerator, IAudioSessionManager2,
-            IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume,
-            MMDeviceEnumerator,
+        Windows::Win32::Foundation::{CloseHandle, BOOL, PWSTR},
+        Windows::Win32::Media::Audio::CoreAudio::{
+            IAudioSessionControl2, IAudioSessionEnumerator, IAudioSessionManager2, IMMDevice,
+            IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator,
         },
-        Windows::Win32::ProcessStatus::K32GetModuleBaseNameW,
-        Windows::Win32::StructuredStorage::PROPVARIANT,
-        Windows::Win32::SystemServices::{OpenProcess, BOOL, PROCESS_ACCESS_RIGHTS, PWSTR},
-        Windows::Win32::WindowsProgramming::CloseHandle,
-        Windows::Win32::WindowsPropertiesSystem::PROPERTYKEY,
+        Windows::Win32::Storage::StructuredStorage::PROPVARIANT,
+        Windows::Win32::System::Com::CoCreateInstance,
+        Windows::Win32::System::ProcessStatus::K32GetModuleBaseNameW,
+        Windows::Win32::System::PropertiesSystem::{IPropertyStore, PROPERTYKEY},
+        Windows::Win32::System::Threading::OpenProcess,
+
+        Windows::Win32::System::OleAutomation::VARENUM,
 
         // hid.rs
-        Windows::Win32::DeviceAndDriverInstallation::{
+        Windows::Win32::Devices::DeviceAndDriverInstallation::{
             SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
             SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
         },
-        Windows::Win32::FileSystem::{
-            CreateFileW, ReadFile, WriteFile, FILE_ACCESS_FLAGS, FILE_CREATION_DISPOSITION,
-            FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE,
+        Windows::Win32::Devices::HumanInterfaceDevice::{
+            HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES,
         },
-        Windows::Win32::Hid::{HidD_GetAttributes, HidD_GetHidGuid, HIDD_ATTRIBUTES},
-        Windows::Win32::SystemServices::{HANDLE, PWSTR},
-        Windows::Win32::WindowsAndMessaging::HWND,
-        Windows::Win32::WindowsProgramming::CloseHandle,
+        Windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, PWSTR},
+        Windows::Win32::Storage::FileSystem::{CreateFileW, ReadFile, WriteFile},
     );
 }
