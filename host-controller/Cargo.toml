@@ -7,9 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static = "1.4.0"
-widestring = "0.4.3"
-windows = "0.19.0"
+anyhow = "1.0"
+bimap = "0.6"
+env_logger = "0.9"
+log = "0.4"
+smol = "1.2"
+widestring = "0.4"
+windows = "0.19"
 
 [build-dependencies]
-windows = "0.19.0"
+windows = "0.19"
