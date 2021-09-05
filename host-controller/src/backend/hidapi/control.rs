@@ -112,7 +112,7 @@ impl Runtime {
             }
 
             for device in self.devices.values_mut() {
-                device.poll(&self.handle)?;
+                device.poll(&self.handle).ok();
             }
 
             // Prevent busy loop
