@@ -1,6 +1,8 @@
 use crate::{
     audio::{AudioBackend, AudioControl, AudioEvent, AudioHandle, StreamControl, StreamId},
-    control::{ChannelInput, ControlBackend, ControlHandle, ControlInput, ControlOutput},
+    control::{
+        ChannelInput, ChannelOutput, ControlBackend, ControlHandle, ControlInput, ControlOutput,
+    },
 };
 use smol::{
     channel::{Receiver, Sender},
@@ -35,12 +37,11 @@ where
         let control_handle = ControlHandle::new(control_input_tx, control_output_rx);
         let control_task = self.control_backend.start(control_handle);
 
-        let mut runtime = CoreRuntime {
+        let mut runtime = Runtime {
             audio_event_rx,
             audio_control_tx,
             control_input_rx,
             control_output_tx,
-            stream_id: None,
         };
         let runtime_task = runtime.run();
 
@@ -53,15 +54,14 @@ where
     }
 }
 
-struct CoreRuntime {
+struct Runtime {
     audio_event_rx: Receiver<AudioEvent>,
     audio_control_tx: Sender<AudioControl>,
     control_input_rx: Receiver<ControlInput>,
     control_output_tx: Sender<ControlOutput>,
-    stream_id: Option<StreamId>,
 }
 
-impl CoreRuntime {
+impl Runtime {
     async fn run(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
         loop {
             let audio_event_task = async {
@@ -82,9 +82,7 @@ impl CoreRuntime {
             log::debug!("incoming {:?}", incoming);
             match incoming {
                 Some(Incoming::AudioEvent(audio_event)) => match audio_event {
-                    AudioEvent::StreamOpened { stream_id, name } => {
-                        self.stream_id = Some(stream_id);
-                    }
+                    AudioEvent::StreamOpened { stream_id, name } => {}
                     AudioEvent::StreamClosed { stream_id } => {}
                     AudioEvent::StreamEvent {
                         stream_id,
@@ -92,19 +90,36 @@ impl CoreRuntime {
                     } => {}
                 },
                 Some(Incoming::ControlInput(control_input)) => match control_input {
-                    ControlInput::ChannelInput(channel_id, channel_input) => {
-                        let stream_control = match channel_input {
-                            ChannelInput::SetVolume(volume) => StreamControl::SetVolume(volume),
-                            ChannelInput::StepVolume(steps) => StreamControl::StepVolume(steps),
-                            ChannelInput::SetMuted(muted) => StreamControl::SetMuted(muted),
-                            ChannelInput::ToggleMuted => StreamControl::ToggleMuted,
-                        };
-                        self.audio_control_tx
-                            .send(AudioControl::StreamControl {
-                                stream_id: self.stream_id.unwrap(),
-                                stream_control,
-                            })
-                            .await?;
+                    ControlInput::DeviceAdded(device_id, device_info) => {}
+                    ControlInput::DeviceRemoved(device_id) => {}
+                    ControlInput::ChannelInput(device_id, channel_index, channel_input) => {
+                        match channel_input {
+                            ChannelInput::SetVolume(_) => {}
+                            ChannelInput::StepVolume(_) => {}
+                            ChannelInput::SetMuted(_) => {}
+                            ChannelInput::ToggleMuted => {}
+                            ChannelInput::OpenMenu => {
+                                self.control_output_tx
+                                    .send(ControlOutput::ChannelOutput(
+                                        device_id,
+                                        channel_index,
+                                        ChannelOutput::MenuOpened,
+                                    ))
+                                    .await?;
+                            }
+                            ChannelInput::CloseMenu => {
+                                self.control_output_tx
+                                    .send(ControlOutput::ChannelOutput(
+                                        device_id,
+                                        channel_index,
+                                        ChannelOutput::MenuClosed,
+                                    ))
+                                    .await?;
+                            }
+                            ChannelInput::MenuNext => {}
+                            ChannelInput::MenuPrevious => {}
+                            ChannelInput::MenuSelect => {}
+                        }
                     }
                 },
                 None => break,

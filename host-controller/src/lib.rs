@@ -3,10 +3,9 @@ pub(crate) mod bindings {
 }
 
 pub mod audio;
+pub mod backend;
 pub mod control;
 pub mod core;
-
-pub mod windows_backend;
 
 use crate::bindings::Windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 

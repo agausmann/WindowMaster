@@ -42,14 +42,14 @@ impl AudioBackend for WindowsAudioBackend {
 
     fn start(self, handle: AudioHandle) -> Pin<Box<dyn Future<Output = Result<(), Self::Error>>>> {
         Box::pin(async {
-            let mut runtime = WindowsAudioRuntime::new(self, handle).await?;
+            let mut runtime = Runtime::new(self, handle).await?;
             runtime.run().await?;
             Ok(())
         })
     }
 }
 
-struct WindowsAudioRuntime {
+struct Runtime {
     handle: AudioHandle,
     device_enumerator: IMMDeviceEnumerator,
     event_rx: Receiver<NotifyEvent>,
@@ -58,7 +58,7 @@ struct WindowsAudioRuntime {
     devices: HashMap<StreamId, AudioDevice>,
 }
 
-impl WindowsAudioRuntime {
+impl Runtime {
     async fn new(backend: WindowsAudioBackend, handle: AudioHandle) -> windows::Result<Self> {
         let _ = backend;
 
