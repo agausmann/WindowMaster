@@ -96,16 +96,15 @@ impl Runtime {
         // Release() gets called when dropped, prevent that from happening:
         std::mem::forget(notifier);
 
-        // XXX not all devices provide IAudioEndpointVolume
-        // let device_list = unsafe {
-        //     self.device_enumerator
-        //         .EnumAudioEndpoints(eRender, DEVICE_STATEMASK_ALL)?
-        // };
-        // let num_devices = unsafe { device_list.GetCount()? };
-        // for index in 0..num_devices {
-        //     let ll_device = unsafe { device_list.Item(index)? };
-        //     self.add_device(ll_device).await?;
-        // }
+        let device_list = unsafe {
+            self.device_enumerator
+                .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?
+        };
+        let num_devices = unsafe { device_list.GetCount()? };
+        for index in 0..num_devices {
+            let ll_device = unsafe { device_list.Item(index)? };
+            self.add_device(ll_device).await?;
+        }
         self.add_device(unsafe {
             self.device_enumerator
                 .GetDefaultAudioEndpoint(eRender, eConsole)?
@@ -143,7 +142,7 @@ impl Runtime {
                                 }
                             }
                         } else {
-                            log::warn!("received control for unknown stream");
+                            log::warn!("received control for unknown stream {:?}", stream_id);
                         }
                     }
                 },
@@ -206,19 +205,28 @@ impl Runtime {
     }
 
     async fn add_device(&mut self, ll_device: IMMDevice) -> windows::Result<()> {
-        let stream_id = StreamId::new();
-        let device = AudioDevice::new(ll_device.clone(), stream_id, self.event_tx.clone())?;
-        self.handle
-            .send(AudioEvent::StreamOpened {
-                stream_id,
-                name: device.name()?,
-            })
-            .await;
+        let device_info = DeviceInfo::new(&ll_device)?;
+        if self.device_ids.contains_right(&device_info.id) {
+            return Ok(());
+        }
+        log::debug!("Registering device {:?}", device_info);
+        let device = match AudioDevice::new(ll_device.clone(), self.event_tx.clone()) {
+            Ok(x) => x,
+            Err(e) => {
+                log::warn!("could not open audio device: {}", e);
+                return Ok(());
+            }
+        };
+        let stream_id = device.stream_id();
+        let name = device.name()?;
+        let device_id = device.id()?;
         self.device_ids
-            .insert_no_overwrite(stream_id, device.id()?)
-            .expect("duplicate device ID");
-
+            .insert_no_overwrite(stream_id, device_id)
+            .expect("device id conflict");
         self.devices.insert(stream_id, device);
+        self.handle
+            .send(AudioEvent::StreamOpened { stream_id, name })
+            .await;
         Ok(())
     }
 }
@@ -252,6 +260,33 @@ impl std::fmt::Debug for DeviceId {
         f.debug_tuple("DeviceId")
             .field(&self.0.to_string_lossy())
             .finish()
+    }
+}
+
+#[derive(Debug)]
+struct DeviceInfo {
+    id: DeviceId,
+    name: String,
+}
+
+impl DeviceInfo {
+    fn new(device: &IMMDevice) -> windows::Result<Self> {
+        Ok(Self {
+            id: unsafe { DeviceId::new(device.GetId()?).expect("null pointer") },
+            name: unsafe {
+                U16CStr::from_ptr_str(
+                    Property::from(
+                        device
+                            .OpenPropertyStore(STGM_READ as _)?
+                            .GetValue(&DEVPKEY_Device_FriendlyName)?,
+                    )
+                    .as_pwstr()
+                    .expect("invalid type")
+                    .0,
+                )
+                .to_string_lossy()
+            },
+        })
     }
 }
 
@@ -348,14 +383,11 @@ struct AudioDevice {
     ll_device: IMMDevice,
     properties: IPropertyStore,
     volume: IAudioEndpointVolume,
+    stream_id: StreamId,
 }
 
 impl AudioDevice {
-    fn new(
-        ll_device: IMMDevice,
-        stream_id: StreamId,
-        event_tx: Sender<NotifyEvent>,
-    ) -> windows::Result<Self> {
+    fn new(ll_device: IMMDevice, event_tx: Sender<NotifyEvent>) -> windows::Result<Self> {
         let properties = unsafe { ll_device.OpenPropertyStore(STGM_READ as _)? };
         let mut volume = None;
         unsafe {
@@ -367,6 +399,7 @@ impl AudioDevice {
             )?;
         }
         let volume: IAudioEndpointVolume = volume.expect("volume control creation failed");
+        let stream_id = StreamId::new();
 
         let notifier = IAudioEndpointVolumeCallback::from(DeviceNotifier {
             stream_id,
@@ -378,6 +411,7 @@ impl AudioDevice {
             ll_device,
             properties,
             volume,
+            stream_id,
         })
     }
 
@@ -427,11 +461,24 @@ impl AudioDevice {
         }
         Ok(())
     }
+
+    fn stream_id(&self) -> StreamId {
+        self.stream_id
+    }
 }
 
 enum Property {
     Empty,
     Pwstr(PWSTR),
+}
+
+impl Property {
+    fn as_pwstr(&self) -> Option<PWSTR> {
+        match self {
+            &Self::Pwstr(x) => Some(x),
+            _ => None,
+        }
+    }
 }
 
 impl From<PROPVARIANT> for Property {

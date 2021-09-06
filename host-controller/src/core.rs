@@ -27,15 +27,28 @@ where
     }
 
     pub fn run(self) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        let Self {
+            audio_backend,
+            control_backend,
+        } = self;
+
         let (audio_event_tx, audio_event_rx) = smol::channel::bounded(16);
         let (audio_control_tx, audio_control_rx) = smol::channel::bounded(16);
         let audio_handle = AudioHandle::new(audio_event_tx, audio_control_rx);
-        let audio_task = self.audio_backend.start(audio_handle);
+        let audio_task = async {
+            let result = audio_backend.start(audio_handle).await;
+            log::warn!("audio task exited: {:?}", result);
+            result
+        };
 
         let (control_input_tx, control_input_rx) = smol::channel::bounded(16);
         let (control_output_tx, control_output_rx) = smol::channel::bounded(16);
         let control_handle = ControlHandle::new(control_input_tx, control_output_rx);
-        let control_task = self.control_backend.start(control_handle);
+        let control_task = async {
+            let result = control_backend.start(control_handle).await;
+            log::warn!("control task exited: {:?}", result);
+            result
+        };
 
         let mut runtime = Runtime {
             audio_event_rx,
