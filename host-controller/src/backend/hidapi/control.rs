@@ -47,7 +47,7 @@ struct Runtime {
 impl Runtime {
     fn run(&mut self) -> Result<(), HidError> {
         let mut refresh_timer = Timer::new(Duration::from_millis(1000));
-        loop {
+        'main: loop {
             if refresh_timer.poll() {
                 // Get new list of present devices
                 self.hidapi.refresh_devices()?;
@@ -91,24 +91,32 @@ impl Runtime {
                 }
             }
 
-            match self.handle.try_recv() {
-                Ok(control_output) => {
-                    log::debug!("incoming {:?}", control_output);
-                    match control_output {
-                        ControlOutput::ChannelOutput(device_id, channel_index, channel_output) => {
-                            if let Some(device) = self.devices.get_mut(&device_id) {
-                                device.channel_output(channel_index, channel_output);
-                            } else {
-                                log::warn!("received event for unknown device {:?}", device_id);
+            loop {
+                match self.handle.try_recv() {
+                    Ok(control_output) => {
+                        log::debug!("incoming {:?}", control_output);
+                        match control_output {
+                            ControlOutput::ChannelOutput(
+                                device_id,
+                                channel_index,
+                                channel_output,
+                            ) => {
+                                if let Some(device) = self.devices.get_mut(&device_id) {
+                                    device.channel_output(channel_index, channel_output);
+                                } else {
+                                    log::warn!("received event for unknown device {:?}", device_id);
+                                }
                             }
                         }
                     }
+                    Err(TryRecvError::Closed) => {
+                        log::debug!("closing");
+                        break 'main;
+                    }
+                    Err(TryRecvError::Empty) => {
+                        break;
+                    }
                 }
-                Err(TryRecvError::Closed) => {
-                    log::debug!("closing");
-                    break;
-                }
-                Err(TryRecvError::Empty) => {}
             }
 
             for device in self.devices.values_mut() {
