@@ -88,7 +88,7 @@ pub enum StreamControl {
     ToggleMuted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamId(u64);
 
 impl StreamId {

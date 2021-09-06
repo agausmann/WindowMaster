@@ -85,7 +85,7 @@ pub enum ControlOutput {
     ChannelOutput(DeviceId, ChannelIndex, ChannelOutput),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ChannelOutput {
     VolumeChanged(f32),
     MutedChanged(bool),
@@ -93,7 +93,7 @@ pub enum ChannelOutput {
     MenuClosed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId(u64);
 
 impl DeviceId {

@@ -1,7 +1,11 @@
+use std::{collections::HashMap, sync::mpsc::channel};
+
 use crate::{
     audio::{AudioBackend, AudioControl, AudioEvent, AudioHandle, StreamControl, StreamId},
+    bigraph::BiGraph,
     control::{
         ChannelInput, ChannelOutput, ControlBackend, ControlHandle, ControlInput, ControlOutput,
+        DeviceId,
     },
 };
 use smol::{
@@ -55,6 +59,9 @@ where
             audio_control_tx,
             control_input_rx,
             control_output_tx,
+            streams: HashMap::new(),
+            bindings: BiGraph::new(),
+            menus: HashMap::new(),
         };
         let runtime_task = runtime.run();
 
@@ -72,6 +79,9 @@ struct Runtime {
     audio_control_tx: Sender<AudioControl>,
     control_input_rx: Receiver<ControlInput>,
     control_output_tx: Sender<ControlOutput>,
+    streams: HashMap<StreamId, String>,
+    bindings: BiGraph<ChannelId, Binding>,
+    menus: HashMap<ChannelId, Menu>,
 }
 
 impl Runtime {
@@ -95,23 +105,122 @@ impl Runtime {
             log::debug!("incoming {:?}", incoming);
             match incoming {
                 Some(Incoming::AudioEvent(audio_event)) => match audio_event {
-                    AudioEvent::StreamOpened { stream_id, name } => {}
-                    AudioEvent::StreamClosed { stream_id } => {}
+                    AudioEvent::StreamOpened { stream_id, name } => {
+                        self.streams.insert(stream_id, name);
+                    }
+                    AudioEvent::StreamClosed { stream_id } => {
+                        self.streams.remove(&stream_id);
+                    }
                     AudioEvent::StreamEvent {
                         stream_id,
                         stream_event,
-                    } => {}
+                    } => {
+                        let channel_output = match stream_event {
+                            crate::audio::StreamEvent::VolumeChanged(volume) => {
+                                ChannelOutput::VolumeChanged(volume)
+                            }
+                            crate::audio::StreamEvent::MutedChanged(muted) => {
+                                ChannelOutput::MutedChanged(muted)
+                            }
+                        };
+                        for ChannelId(device_id, channel_index) in
+                            self.bindings.neighbors_of_right(Binding::Direct(stream_id))
+                        {
+                            self.control_output_tx
+                                .send(ControlOutput::ChannelOutput(
+                                    device_id,
+                                    channel_index,
+                                    channel_output.clone(),
+                                ))
+                                .await?;
+                        }
+                    }
                 },
                 Some(Incoming::ControlInput(control_input)) => match control_input {
                     ControlInput::DeviceAdded(device_id, device_info) => {}
                     ControlInput::DeviceRemoved(device_id) => {}
                     ControlInput::ChannelInput(device_id, channel_index, channel_input) => {
+                        let channel_id = ChannelId(device_id, channel_index);
                         match channel_input {
-                            ChannelInput::SetVolume(_) => {}
-                            ChannelInput::StepVolume(_) => {}
-                            ChannelInput::SetMuted(_) => {}
-                            ChannelInput::ToggleMuted => {}
+                            ChannelInput::SetVolume(volume) => {
+                                for binding in self.bindings.neighbors_of_left(channel_id) {
+                                    match binding {
+                                        Binding::Direct(stream_id) => {
+                                            self.audio_control_tx
+                                                .send(AudioControl::StreamControl {
+                                                    stream_id,
+                                                    stream_control: StreamControl::SetVolume(
+                                                        volume,
+                                                    ),
+                                                })
+                                                .await?;
+                                        }
+                                    }
+                                }
+                            }
+                            ChannelInput::StepVolume(steps) => {
+                                for binding in self.bindings.neighbors_of_left(channel_id) {
+                                    match binding {
+                                        Binding::Direct(stream_id) => {
+                                            self.audio_control_tx
+                                                .send(AudioControl::StreamControl {
+                                                    stream_id,
+                                                    stream_control: StreamControl::StepVolume(
+                                                        steps,
+                                                    ),
+                                                })
+                                                .await?;
+                                        }
+                                    }
+                                }
+                            }
+                            ChannelInput::SetMuted(muted) => {
+                                for binding in self.bindings.neighbors_of_left(channel_id) {
+                                    match binding {
+                                        Binding::Direct(stream_id) => {
+                                            self.audio_control_tx
+                                                .send(AudioControl::StreamControl {
+                                                    stream_id,
+                                                    stream_control: StreamControl::SetMuted(muted),
+                                                })
+                                                .await?;
+                                        }
+                                    }
+                                }
+                            }
+                            ChannelInput::ToggleMuted => {
+                                for binding in self.bindings.neighbors_of_left(channel_id) {
+                                    match binding {
+                                        Binding::Direct(stream_id) => {
+                                            self.audio_control_tx
+                                                .send(AudioControl::StreamControl {
+                                                    stream_id,
+                                                    stream_control: StreamControl::ToggleMuted,
+                                                })
+                                                .await?;
+                                        }
+                                    }
+                                }
+                            }
                             ChannelInput::OpenMenu => {
+                                let mut options = Vec::new();
+                                options.push(MenuOption {
+                                    name: "None".into(),
+                                    binding: None,
+                                });
+                                options.extend(self.streams.iter().map(|(stream_id, name)| {
+                                    MenuOption {
+                                        name: name.clone(),
+                                        binding: Some(Binding::Direct(*stream_id)),
+                                    }
+                                }));
+                                options[1..].sort_by(|a, b| a.name.cmp(&b.name));
+                                let menu = Menu {
+                                    options,
+                                    current_index: 0,
+                                };
+                                menu.print();
+                                self.menus.insert(channel_id, menu);
                                 self.control_output_tx
                                     .send(ControlOutput::ChannelOutput(
                                         device_id,
@@ -129,9 +238,32 @@ impl Runtime {
                                     ))
                                     .await?;
                             }
-                            ChannelInput::MenuNext => {}
-                            ChannelInput::MenuPrevious => {}
-                            ChannelInput::MenuSelect => {}
+                            ChannelInput::MenuNext => {
+                                if let Some(menu) = self.menus.get_mut(&channel_id) {
+                                    menu.current_index =
+                                        (menu.current_index + 1).min(menu.options.len() - 1);
+                                    menu.print();
+                                }
+                            }
+                            ChannelInput::MenuPrevious => {
+                                if let Some(menu) = self.menus.get_mut(&channel_id) {
+                                    menu.current_index = menu.current_index.saturating_sub(1);
+                                    menu.print();
+                                }
+                            }
+                            ChannelInput::MenuSelect => {
+                                if let Some(menu) = self.menus.get(&channel_id) {
+                                    log::info!(
+                                        "selected {:?}",
+                                        menu.options[menu.current_index].name
+                                    );
+                                    self.bindings.remove_left(channel_id);
+                                    if let Some(binding) = menu.options[menu.current_index].binding
+                                    {
+                                        self.bindings.add_edge(channel_id, binding);
+                                    }
+                                }
+                            }
                         }
                     }
                 },
@@ -146,4 +278,36 @@ impl Runtime {
 enum Incoming {
     AudioEvent(AudioEvent),
     ControlInput(ControlInput),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ChannelId(DeviceId, usize);
+
+struct Menu {
+    options: Vec<MenuOption>,
+    current_index: usize,
+}
+
+impl Menu {
+    fn print(&self) {
+        for (i, option) in self.options.iter().enumerate() {
+            if i == self.current_index {
+                print!("> ");
+            } else {
+                print!("  ");
+            }
+            println!("{}", option.name);
+        }
+        println!();
+    }
+}
+
+struct MenuOption {
+    name: String,
+    binding: Option<Binding>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Binding {
+    Direct(StreamId),
 }
