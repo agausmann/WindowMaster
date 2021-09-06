@@ -56,6 +56,8 @@ pub enum AudioEvent {
     StreamOpened {
         stream_id: StreamId,
         name: String,
+        volume: f32,
+        muted: bool,
     },
     StreamClosed {
         stream_id: StreamId,

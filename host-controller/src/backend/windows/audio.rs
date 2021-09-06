@@ -6,8 +6,8 @@ use crate::bindings::Windows::Win32::{
     Media::Audio::CoreAudio::{
         eConsole, eRender, EDataFlow, ERole, IAudioEndpointVolume, IAudioEndpointVolumeCallback,
         IMMDevice, IMMDeviceEnumerator, IMMNotificationClient, MMDeviceEnumerator,
-        AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATEMASK_ALL, DEVICE_STATE_ACTIVE,
-        DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT, DEVICE_STATE_UNPLUGGED,
+        AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE_ACTIVE, DEVICE_STATE_DISABLED,
+        DEVICE_STATE_NOTPRESENT, DEVICE_STATE_UNPLUGGED,
     },
     Storage::StructuredStorage::{
         PROPVARIANT_0_0_0_abi, PROPVARIANT_0_0_abi, PROPVARIANT, PROPVARIANT_0, STGM_READ,
@@ -169,6 +169,8 @@ impl Runtime {
                                         .send(AudioEvent::StreamOpened {
                                             stream_id,
                                             name: device.name()?,
+                                            volume: device.volume()?,
+                                            muted: device.is_muted()?,
                                         })
                                         .await;
                                 }
@@ -219,13 +221,20 @@ impl Runtime {
         };
         let stream_id = device.stream_id();
         let name = device.name()?;
+        let volume = device.volume()?;
+        let muted = device.is_muted()?;
         let device_id = device.id()?;
         self.device_ids
             .insert_no_overwrite(stream_id, device_id)
             .expect("device id conflict");
         self.devices.insert(stream_id, device);
         self.handle
-            .send(AudioEvent::StreamOpened { stream_id, name })
+            .send(AudioEvent::StreamOpened {
+                stream_id,
+                name,
+                volume,
+                muted,
+            })
             .await;
         Ok(())
     }
@@ -428,6 +437,10 @@ impl AudioDevice {
     fn id(&self) -> windows::Result<DeviceId> {
         let id_pwstr = unsafe { self.ll_device.GetId()? };
         Ok(unsafe { DeviceId::new(id_pwstr).expect("null") })
+    }
+
+    fn volume(&self) -> windows::Result<f32> {
+        unsafe { self.volume.GetMasterVolumeLevelScalar() }
     }
 
     fn set_volume(&self, volume: f32) -> windows::Result<()> {
