@@ -6,6 +6,8 @@ use std::{
 
 use smol::channel::{Receiver, Sender, TryRecvError};
 
+use crate::audio::StreamState;
+
 type ChannelIndex = usize;
 
 pub trait ControlBackend {
@@ -87,8 +89,7 @@ pub enum ControlOutput {
 
 #[derive(Debug, Clone)]
 pub enum ChannelOutput {
-    VolumeChanged(f32),
-    MutedChanged(bool),
+    StateChanged(StreamState),
     MenuOpened,
     MenuClosed,
 }

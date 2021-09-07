@@ -225,10 +225,9 @@ impl Device {
             DeviceState::Rev1(state) => {
                 let channel = &mut state.channels[index];
                 match channel_output {
-                    ChannelOutput::MutedChanged(muted) => {
-                        channel.muted = muted;
+                    ChannelOutput::StateChanged(state) => {
+                        channel.state = state;
                     }
-                    ChannelOutput::VolumeChanged(_) => {}
                     ChannelOutput::MenuOpened => {
                         channel.menu_open = true;
                     }
@@ -341,7 +340,7 @@ impl Device {
                     for index in 0..rev1::NUM_CHANNELS {
                         let channel = &mut state.channels[index];
                         // Handle output
-                        if channel.muted ^ (channel.menu_open && blink_phase) {
+                        if channel.state.muted ^ (channel.menu_open && blink_phase) {
                             output.leds |= 1 << index;
                         }
                     }
@@ -377,6 +376,8 @@ mod rev1 {
 
     use bytemuck::{Pod, Zeroable};
 
+    use crate::audio::StreamState;
+
     pub(crate) const NUM_CHANNELS: usize = 6;
 
     #[derive(Clone, Copy, Pod, Zeroable)]
@@ -403,7 +404,7 @@ mod rev1 {
         pub(crate) long_pressed: bool,
         pub(crate) long_press_timeout: Option<Instant>,
         pub(crate) menu_open: bool,
-        pub(crate) muted: bool,
+        pub(crate) state: StreamState,
     }
 
     impl DeviceState {
@@ -414,7 +415,7 @@ mod rev1 {
                     long_pressed: false,
                     long_press_timeout: None,
                     menu_open: false,
-                    muted: false,
+                    state: Default::default(),
                 }; NUM_CHANNELS],
             }
         }

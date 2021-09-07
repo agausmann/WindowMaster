@@ -9,6 +9,8 @@ fn main() {
                 DEVICE_STATE_UNPLUGGED, DEVICE_STATEMASK_ALL, IMMDeviceEnumerator,
                 IMMNotificationClient, MMDeviceEnumerator, IMMDevice, IAudioSessionManager2,
                 IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMDeviceCollection,
+                IAudioSessionNotification, IAudioSessionControl, IAudioSessionEvents,
+                AudioSessionState, AudioSessionDisconnectReason,
             },
             Storage::StructuredStorage::STGM_READ,
             System::{

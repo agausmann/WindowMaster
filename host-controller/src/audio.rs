@@ -55,9 +55,7 @@ impl AudioHandle {
 pub enum AudioEvent {
     StreamOpened {
         stream_id: StreamId,
-        name: String,
-        volume: f32,
-        muted: bool,
+        stream_info: StreamInfo,
     },
     StreamClosed {
         stream_id: StreamId,
@@ -70,8 +68,7 @@ pub enum AudioEvent {
 
 #[derive(Debug)]
 pub enum StreamEvent {
-    VolumeChanged(VolumeLevel),
-    MutedChanged(bool),
+    StateChanged(StreamState),
 }
 
 #[derive(Debug)]
@@ -106,5 +103,79 @@ impl StreamId {
             panic!("StreamId overflow");
         }
         Self(id)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StreamState {
+    pub volume: f32,
+    pub muted: bool,
+}
+
+impl Default for StreamState {
+    fn default() -> Self {
+        Self {
+            volume: 0.0,
+            muted: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct StreamInfo {
+    name: String,
+    initial_state: StreamState,
+    parent: Option<StreamId>,
+}
+
+impl StreamInfo {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn initial_state(&self) -> StreamState {
+        self.initial_state
+    }
+
+    pub fn parent(&self) -> Option<StreamId> {
+        self.parent
+    }
+}
+
+pub struct StreamInfoBuilder {
+    name: String,
+    initial_state: StreamState,
+    parent: Option<StreamId>,
+}
+
+impl StreamInfoBuilder {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            initial_state: Default::default(),
+            parent: None,
+        }
+    }
+
+    pub fn with_parent(self, parent: StreamId) -> Self {
+        Self {
+            parent: Some(parent),
+            ..self
+        }
+    }
+
+    pub fn with_initial_state(self, initial_state: StreamState) -> Self {
+        Self {
+            initial_state,
+            ..self
+        }
+    }
+
+    pub fn build(self) -> StreamInfo {
+        StreamInfo {
+            name: self.name,
+            initial_state: self.initial_state,
+            parent: self.parent,
+        }
     }
 }

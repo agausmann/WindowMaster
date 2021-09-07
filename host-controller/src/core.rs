@@ -1,5 +1,7 @@
 use crate::{
-    audio::{AudioBackend, AudioControl, AudioEvent, AudioHandle, StreamControl, StreamId},
+    audio::{
+        AudioBackend, AudioControl, AudioEvent, AudioHandle, StreamControl, StreamId, StreamState,
+    },
     bigraph::BiGraph,
     control::{
         ChannelInput, ChannelOutput, ControlBackend, ControlHandle, ControlInput, ControlOutput,
@@ -78,7 +80,7 @@ struct Runtime {
     audio_control_tx: Sender<AudioControl>,
     control_input_rx: Receiver<ControlInput>,
     control_output_tx: Sender<ControlOutput>,
-    streams: HashMap<StreamId, StreamState>,
+    streams: HashMap<StreamId, Stream>,
     bindings: BiGraph<ChannelId, Binding>,
     menus: HashMap<ChannelId, Menu>,
 }
@@ -106,16 +108,13 @@ impl Runtime {
                 Some(Incoming::AudioEvent(audio_event)) => match audio_event {
                     AudioEvent::StreamOpened {
                         stream_id,
-                        name,
-                        volume,
-                        muted,
+                        stream_info,
                     } => {
                         self.streams.insert(
                             stream_id,
-                            StreamState {
-                                name,
-                                volume,
-                                muted,
+                            Stream {
+                                name: stream_info.name().to_string(),
+                                state: stream_info.initial_state(),
                             },
                         );
                     }
@@ -129,13 +128,9 @@ impl Runtime {
                         if let Some(stream) = self.streams.get_mut(&stream_id) {
                             let channel_output;
                             match stream_event {
-                                crate::audio::StreamEvent::VolumeChanged(volume) => {
-                                    stream.volume = volume;
-                                    channel_output = ChannelOutput::VolumeChanged(volume);
-                                }
-                                crate::audio::StreamEvent::MutedChanged(muted) => {
-                                    stream.muted = muted;
-                                    channel_output = ChannelOutput::MutedChanged(muted);
+                                crate::audio::StreamEvent::StateChanged(state) => {
+                                    stream.state = state;
+                                    channel_output = ChannelOutput::StateChanged(state);
                                 }
                             };
                             for ChannelId(device_id, channel_index) in
@@ -329,19 +324,12 @@ impl Runtime {
         self.bindings.remove_left(channel_id);
         if let Some(binding) = binding {
             self.bindings.add_edge(channel_id, binding);
-            if let Some(state) = self.get_binding_state(&binding) {
+            if let Some(stream) = self.get_binding_state(&binding) {
                 self.control_output_tx
                     .send(ControlOutput::ChannelOutput(
                         device_id,
                         channel_index,
-                        ChannelOutput::VolumeChanged(state.volume),
-                    ))
-                    .await?;
-                self.control_output_tx
-                    .send(ControlOutput::ChannelOutput(
-                        device_id,
-                        channel_index,
-                        ChannelOutput::MutedChanged(state.muted),
+                        ChannelOutput::StateChanged(stream.state),
                     ))
                     .await?;
             }
@@ -350,21 +338,14 @@ impl Runtime {
                 .send(ControlOutput::ChannelOutput(
                     device_id,
                     channel_index,
-                    ChannelOutput::VolumeChanged(0.0),
-                ))
-                .await?;
-            self.control_output_tx
-                .send(ControlOutput::ChannelOutput(
-                    device_id,
-                    channel_index,
-                    ChannelOutput::MutedChanged(false),
+                    ChannelOutput::StateChanged(Default::default()),
                 ))
                 .await?;
         }
         Ok(())
     }
 
-    fn get_binding_state(&self, binding: &Binding) -> Option<&StreamState> {
+    fn get_binding_state(&self, binding: &Binding) -> Option<&Stream> {
         match binding {
             Binding::Direct(stream_id) => self.streams.get(stream_id),
         }
@@ -410,8 +391,7 @@ enum Binding {
     Direct(StreamId),
 }
 
-struct StreamState {
+struct Stream {
     name: String,
-    volume: f32,
-    muted: bool,
+    state: StreamState,
 }
