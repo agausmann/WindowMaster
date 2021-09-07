@@ -293,6 +293,12 @@ struct AudioNotifier {
     event_tx: Sender<NotifyEvent>,
 }
 
+impl AudioNotifier {
+    fn send(&self, event: NotifyEvent) {
+        smol::block_on(self.event_tx.send(event)).ok();
+    }
+}
+
 // Impl IMMNotificationClient
 #[allow(non_snake_case)]
 impl AudioNotifier {
@@ -308,28 +314,22 @@ impl AudioNotifier {
 
     fn OnDeviceAdded(&self, device_id: PWSTR) -> windows::Result<()> {
         let device_id = unsafe { DeviceId::new(device_id).expect("null") };
-        self.event_tx
-            .try_send(NotifyEvent::DeviceAdded(device_id))
-            .ok();
+        self.send(NotifyEvent::DeviceAdded(device_id));
         Ok(())
     }
 
     fn OnDeviceRemoved(&self, device_id: PWSTR) -> windows::Result<()> {
         let device_id = unsafe { DeviceId::new(device_id).expect("null") };
-        self.event_tx
-            .try_send(NotifyEvent::DeviceRemoved(device_id))
-            .ok();
+        self.send(NotifyEvent::DeviceRemoved(device_id));
         Ok(())
     }
 
     fn OnDeviceStateChanged(&self, device_id: PWSTR, new_state: u32) -> windows::Result<()> {
         let device_id = unsafe { DeviceId::new(device_id).expect("null") };
-        self.event_tx
-            .try_send(NotifyEvent::DeviceStateChanged(
-                device_id,
-                DeviceState::parse(new_state).expect("unknown state"),
-            ))
-            .ok();
+        self.send(NotifyEvent::DeviceStateChanged(
+            device_id,
+            DeviceState::parse(new_state).expect("unknown state"),
+        ));
         Ok(())
     }
 
@@ -549,20 +549,24 @@ struct DeviceNotifier {
     event_tx: Sender<NotifyEvent>,
 }
 
+impl DeviceNotifier {
+    fn send(&self, event: NotifyEvent) {
+        smol::block_on(self.event_tx.send(event)).ok();
+    }
+}
+
 // impl IAudioEndpointVolumeCallback
 #[allow(non_snake_case)]
 impl DeviceNotifier {
     fn OnNotify(&self, data: *mut AUDIO_VOLUME_NOTIFICATION_DATA) -> windows::Result<()> {
         let data = unsafe { &*data };
-        self.event_tx
-            .try_send(NotifyEvent::StreamStateChanged(
-                self.stream_id,
-                StreamState {
-                    volume: data.fMasterVolume,
-                    muted: data.bMuted.into(),
-                },
-            ))
-            .ok();
+        self.send(NotifyEvent::StreamStateChanged(
+            self.stream_id,
+            StreamState {
+                volume: data.fMasterVolume,
+                muted: data.bMuted.into(),
+            },
+        ));
         Ok(())
     }
 }
@@ -571,6 +575,12 @@ impl DeviceNotifier {
 struct NewSessionNotifier {
     stream_id: StreamId,
     event_tx: Sender<NotifyEvent>,
+}
+
+impl NewSessionNotifier {
+    fn send(&self, event: NotifyEvent) {
+        smol::block_on(self.event_tx.send(event)).ok();
+    }
 }
 
 // impl IAudioSessionNotification
@@ -585,6 +595,12 @@ impl NewSessionNotifier {
 struct SessionNotifier {
     stream_id: StreamId,
     event_tx: Sender<NotifyEvent>,
+}
+
+impl SessionNotifier {
+    fn send(&self, event: NotifyEvent) {
+        smol::block_on(self.event_tx.send(event)).ok();
+    }
 }
 
 // impl IAudioSessionEvents
