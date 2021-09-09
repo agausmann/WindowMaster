@@ -7,8 +7,9 @@ use crate::bindings::Windows::Win32::{
     Media::Audio::CoreAudio::{
         eConsole, eRender, AudioSessionDisconnectReason, AudioSessionState, EDataFlow, ERole,
         IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioSessionControl,
-        IAudioSessionManager2, IAudioSessionNotification, IMMDevice, IMMDeviceEnumerator,
-        IMMNotificationClient, MMDeviceEnumerator, AUDIO_VOLUME_NOTIFICATION_DATA,
+        IAudioSessionControl2, IAudioSessionEvents, IAudioSessionManager2,
+        IAudioSessionNotification, IMMDevice, IMMDeviceEnumerator, IMMNotificationClient,
+        ISimpleAudioVolume, MMDeviceEnumerator, AUDIO_VOLUME_NOTIFICATION_DATA,
         DEVICE_STATE_ACTIVE, DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT,
         DEVICE_STATE_UNPLUGGED,
     },
@@ -59,7 +60,9 @@ struct Runtime {
     event_rx: Receiver<NotifyEvent>,
     event_tx: Sender<NotifyEvent>,
     device_ids: BiHashMap<StreamId, DeviceId>,
+    session_ids: BiHashMap<StreamId, SessionId>,
     devices: HashMap<StreamId, AudioDevice>,
+    sessions: HashMap<StreamId, AudioSession>,
 }
 
 impl Runtime {
@@ -81,7 +84,9 @@ impl Runtime {
             event_rx,
             event_tx,
             device_ids: BiHashMap::new(),
+            session_ids: BiHashMap::new(),
             devices: HashMap::new(),
+            sessions: HashMap::new(),
         })
     }
 
@@ -145,6 +150,21 @@ impl Runtime {
                                     device.step_volume(steps)?;
                                 }
                             }
+                        } else if let Some(session) = self.sessions.get(&stream_id) {
+                            match stream_control {
+                                StreamControl::SetVolume(volume) => {
+                                    session.set_volume(volume)?;
+                                }
+                                StreamControl::SetMuted(muted) => {
+                                    session.set_muted(muted)?;
+                                }
+                                StreamControl::ToggleMuted => {
+                                    session.toggle_muted()?;
+                                }
+                                StreamControl::StepVolume(steps) => {
+                                    session.step_volume(steps)?;
+                                }
+                            }
                         } else {
                             log::warn!("received control for unknown stream {:?}", stream_id);
                         }
@@ -172,7 +192,7 @@ impl Runtime {
                                     self.handle
                                         .send(AudioEvent::StreamOpened {
                                             stream_id,
-                                            stream_info: device.info()?,
+                                            stream_info: device.stream_info()?,
                                         })
                                         .await;
                                 }
@@ -192,6 +212,39 @@ impl Runtime {
                             })
                             .await;
                     }
+                    NotifyEvent::SessionCreated(parent_stream_id, session_id) => {
+                        if !self.session_ids.contains_right(&session_id) {
+                            if let Some(parent_device) = self.devices.get(&parent_stream_id) {
+                                if let Some(session_control) =
+                                    parent_device.find_session(&session_id)?
+                                {
+                                    let session = AudioSession::new(
+                                        parent_stream_id,
+                                        session_control,
+                                        self.event_tx.clone(),
+                                    )?;
+                                    let stream_id = session.stream_id();
+                                    let stream_info = session.stream_info()?;
+                                    self.sessions.insert(stream_id, session);
+                                    self.session_ids.insert(stream_id, session_id);
+                                    self.handle
+                                        .send(AudioEvent::StreamOpened {
+                                            stream_id,
+                                            stream_info,
+                                        })
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+                    NotifyEvent::SessionDisconnected(stream_id) => {
+                        if self.sessions.remove(&stream_id).is_some() {
+                            self.session_ids.remove_by_left(&stream_id);
+                            self.handle
+                                .send(AudioEvent::StreamClosed { stream_id })
+                                .await;
+                        };
+                    }
                 },
                 None => break,
             }
@@ -206,7 +259,7 @@ impl Runtime {
             return Ok(());
         }
         log::debug!("Registering device {:?}", device_info);
-        let device = match AudioDevice::new(ll_device.clone(), self.event_tx.clone()) {
+        let device = match AudioDevice::new(ll_device.clone(), self.event_tx.clone()).await {
             Ok(x) => x,
             Err(e) => {
                 log::warn!("could not open audio device: {}", e);
@@ -217,7 +270,7 @@ impl Runtime {
         self.handle
             .send(AudioEvent::StreamOpened {
                 stream_id,
-                stream_info: device.info()?,
+                stream_info: device.stream_info()?,
             })
             .await;
         let device_id = device.id()?;
@@ -256,6 +309,35 @@ impl DeviceId {
 impl std::fmt::Debug for DeviceId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_tuple("DeviceId")
+            .field(&self.0.to_string_lossy())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct SessionId(U16CString);
+
+impl SessionId {
+    unsafe fn new(pwstr: PWSTR) -> Option<Self> {
+        if pwstr.is_null() {
+            None
+        } else {
+            Some(SessionId(U16CStr::from_ptr_str(pwstr.0).to_ucstring()))
+        }
+    }
+
+    fn as_pwstr(&self) -> PWSTR {
+        PWSTR(self.0.as_ptr() as *mut _)
+    }
+
+    fn as_ucstr(&self) -> &U16CStr {
+        self.0.as_ucstr()
+    }
+}
+
+impl std::fmt::Debug for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_tuple("SessionId")
             .field(&self.0.to_string_lossy())
             .finish()
     }
@@ -345,6 +427,8 @@ enum NotifyEvent {
     DeviceRemoved(DeviceId),
     DeviceStateChanged(DeviceId, DeviceState),
     StreamStateChanged(StreamId, StreamState),
+    SessionCreated(StreamId, SessionId),
+    SessionDisconnected(StreamId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -376,6 +460,109 @@ impl DeviceState {
     }
 }
 
+struct AudioSession {
+    parent_stream_id: StreamId,
+    stream_id: StreamId,
+    session_control: IAudioSessionControl2,
+    volume_control: ISimpleAudioVolume,
+}
+
+impl AudioSession {
+    fn new(
+        parent_stream_id: StreamId,
+        session_control: IAudioSessionControl2,
+        event_tx: Sender<NotifyEvent>,
+    ) -> windows::Result<Self> {
+        let volume_control: ISimpleAudioVolume = session_control.cast()?;
+
+        let stream_id = StreamId::new();
+
+        let session_notifier = IAudioSessionEvents::from(SessionNotifier {
+            stream_id,
+            event_tx,
+        });
+        unsafe { session_control.RegisterAudioSessionNotification(session_notifier)? };
+
+        Ok(Self {
+            parent_stream_id,
+            stream_id,
+            session_control,
+            volume_control,
+        })
+    }
+
+    fn stream_id(&self) -> StreamId {
+        self.stream_id
+    }
+
+    fn name(&self) -> windows::Result<String> {
+        // if unsafe { self.session_control.IsSystemSoundsSession() } {
+        //     return Ok("System Sounds".into());
+        // }
+        let mut name = unsafe {
+            U16CStr::from_ptr_str(self.session_control.GetDisplayName()?.0).to_string_lossy()
+        };
+        if name.is_empty() {
+            name = get_process_name(&self.session_control).unwrap_or(String::new())
+        }
+        //XXX temporary fix until I can read the return code of IsSystemSoundsSession
+        // https://github.com/microsoft/windows-rs/issues/1065
+        if name.contains("AudioSrv.Dll") {
+            return Ok("System Sounds".into());
+        }
+        Ok(name)
+    }
+
+    fn volume(&self) -> windows::Result<f32> {
+        unsafe { self.volume_control.GetMasterVolume() }
+    }
+
+    fn muted(&self) -> windows::Result<bool> {
+        unsafe { self.volume_control.GetMute().map(Into::into) }
+    }
+
+    fn stream_state(&self) -> windows::Result<StreamState> {
+        Ok(StreamState {
+            volume: self.volume()?,
+            muted: self.muted()?,
+        })
+    }
+
+    fn stream_info(&self) -> windows::Result<StreamInfo> {
+        Ok(StreamInfoBuilder::new(self.name()?)
+            .with_initial_state(self.stream_state()?)
+            .with_parent(self.parent_stream_id)
+            .build())
+    }
+
+    fn set_volume(&self, volume: f32) -> windows::Result<()> {
+        unsafe {
+            self.volume_control
+                .SetMasterVolume(volume, std::ptr::null())
+        }
+    }
+
+    fn set_muted(&self, muted: bool) -> windows::Result<()> {
+        unsafe { self.volume_control.SetMute(muted, std::ptr::null()) }
+    }
+
+    fn toggle_muted(&self) -> windows::Result<()> {
+        unsafe {
+            self.volume_control
+                .SetMute(!self.muted()?, std::ptr::null())
+        }
+    }
+
+    pub(crate) fn step_volume(&self, steps: i32) -> windows::Result<()> {
+        unsafe {
+            self.volume_control.SetMasterVolume(
+                (self.volume()? + steps as f32 * 0.02).clamp(0.0, 1.0),
+                std::ptr::null(),
+            )
+        }
+    }
+}
+
 struct AudioDevice {
     stream_id: StreamId,
     ll_device: IMMDevice,
@@ -385,7 +572,7 @@ struct AudioDevice {
 }
 
 impl AudioDevice {
-    fn new(ll_device: IMMDevice, event_tx: Sender<NotifyEvent>) -> windows::Result<Self> {
+    async fn new(ll_device: IMMDevice, event_tx: Sender<NotifyEvent>) -> windows::Result<Self> {
         let properties = unsafe { ll_device.OpenPropertyStore(STGM_READ as _)? };
         let mut volume = None;
         unsafe {
@@ -411,6 +598,20 @@ impl AudioDevice {
             session_manager.expect("session manager creation failed");
 
         let stream_id = StreamId::new();
+
+        let session_enumerator = unsafe { session_manager.GetSessionEnumerator()? };
+        let num_sessions = unsafe { session_enumerator.GetCount()? };
+        for i in 0..num_sessions {
+            let session_control = unsafe { session_enumerator.GetSession(i)? };
+            let session_control: IAudioSessionControl2 = session_control.cast()?;
+            let session_id =
+                unsafe { SessionId::new(session_control.GetSessionIdentifier()?).expect("null") };
+
+            event_tx
+                .send(NotifyEvent::SessionCreated(stream_id, session_id))
+                .await
+                .ok();
+        }
 
         let device_notifier = IAudioEndpointVolumeCallback::from(DeviceNotifier {
             stream_id,
@@ -488,17 +689,34 @@ impl AudioDevice {
         self.stream_id
     }
 
-    fn state(&self) -> windows::Result<StreamState> {
+    fn stream_state(&self) -> windows::Result<StreamState> {
         Ok(StreamState {
             volume: self.volume()?,
             muted: self.is_muted()?,
         })
     }
 
-    fn info(&self) -> windows::Result<StreamInfo> {
+    fn stream_info(&self) -> windows::Result<StreamInfo> {
         Ok(StreamInfoBuilder::new(self.name()?)
-            .with_initial_state(self.state()?)
+            .with_initial_state(self.stream_state()?)
             .build())
+    }
+
+    fn find_session(
+        &self,
+        session_id: &SessionId,
+    ) -> windows::Result<Option<IAudioSessionControl2>> {
+        let enumerator = unsafe { self.session_manager.GetSessionEnumerator()? };
+        let num_sessions = unsafe { enumerator.GetCount()? };
+        for i in 0..num_sessions {
+            let session_control = unsafe { enumerator.GetSession(i)? };
+            let session_control: IAudioSessionControl2 = session_control.cast()?;
+            let id = unsafe { U16CStr::from_ptr_str(session_control.GetSessionIdentifier()?.0) };
+            if id == session_id.as_ucstr() {
+                return Ok(Some(session_control));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -587,6 +805,12 @@ impl NewSessionNotifier {
 #[allow(non_snake_case)]
 impl NewSessionNotifier {
     fn OnSessionCreated(&self, new_session: &Option<IAudioSessionControl>) -> windows::Result<()> {
+        if let Some(session) = new_session {
+            let session: IAudioSessionControl2 = session.cast()?;
+            let session_id =
+                unsafe { SessionId::new(session.GetSessionIdentifier()?).expect("null") };
+            self.send(NotifyEvent::SessionCreated(self.stream_id, session_id))
+        }
         Ok(())
     }
 }
@@ -595,6 +819,12 @@ impl NewSessionNotifier {
 struct SessionNotifier {
     stream_id: StreamId,
     event_tx: Sender<NotifyEvent>,
+}
+
+impl Drop for SessionNotifier {
+    fn drop(&mut self) {
+        log::warn!("dropped {:?}", self.stream_id);
+    }
 }
 
 impl SessionNotifier {
@@ -611,6 +841,7 @@ impl SessionNotifier {
         new_display_name: PWSTR,
         event_context: *const Guid,
     ) -> windows::Result<()> {
+        let _ = event_context;
         Ok(())
     }
 
@@ -619,6 +850,7 @@ impl SessionNotifier {
         new_icon_path: PWSTR,
         event_context: *const Guid,
     ) -> windows::Result<()> {
+        let _ = event_context;
         Ok(())
     }
 
@@ -628,6 +860,14 @@ impl SessionNotifier {
         new_mute: BOOL,
         event_context: *const Guid,
     ) -> windows::Result<()> {
+        let _ = event_context;
+        self.send(NotifyEvent::StreamStateChanged(
+            self.stream_id,
+            StreamState {
+                volume: new_volume,
+                muted: new_mute.into(),
+            },
+        ));
         Ok(())
     }
 
@@ -638,6 +878,12 @@ impl SessionNotifier {
         changed_channel: u32,
         event_context: *const Guid,
     ) -> windows::Result<()> {
+        let _ = (
+            channel_count,
+            new_channel_volume_array,
+            changed_channel,
+            event_context,
+        );
         Ok(())
     }
 
@@ -646,6 +892,7 @@ impl SessionNotifier {
         new_grouping_param: *const Guid,
         event_context: *const Guid,
     ) -> windows::Result<()> {
+        let _ = (new_grouping_param, event_context);
         Ok(())
     }
 
@@ -657,6 +904,23 @@ impl SessionNotifier {
         &self,
         disconnect_reason: AudioSessionDisconnectReason,
     ) -> windows::Result<()> {
+        self.send(NotifyEvent::SessionDisconnected(self.stream_id));
         Ok(())
     }
+}
+
+fn get_process_name(session_control: &IAudioSessionControl2) -> Option<String> {
+    let string = unsafe {
+        U16CStr::from_ptr_str(session_control.GetSessionIdentifier().ok()?.0).to_string_lossy()
+    };
+
+    let file_name = string.rsplit_once('%')?.0.rsplit_once('\\')?.1;
+
+    Some(
+        file_name
+            .rsplit_once('.')
+            .map(|(stem, _extension)| stem)
+            .unwrap_or(file_name)
+            .to_string(),
+    )
 }

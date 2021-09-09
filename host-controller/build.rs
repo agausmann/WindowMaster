@@ -10,7 +10,8 @@ fn main() {
                 IMMNotificationClient, MMDeviceEnumerator, IMMDevice, IAudioSessionManager2,
                 IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMDeviceCollection,
                 IAudioSessionNotification, IAudioSessionControl, IAudioSessionEvents,
-                AudioSessionState, AudioSessionDisconnectReason,
+                AudioSessionState, AudioSessionDisconnectReason, IAudioSessionControl2,
+                IAudioSessionEnumerator, ISimpleAudioVolume
             },
             Storage::StructuredStorage::STGM_READ,
             System::{
