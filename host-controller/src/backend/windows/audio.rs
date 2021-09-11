@@ -2,12 +2,16 @@ use crate::audio::{
     AudioBackend, AudioControl, AudioEvent, AudioHandle, StreamControl, StreamEvent, StreamId,
     StreamInfo, StreamInfoBuilder, StreamState,
 };
+use crate::bindings::Windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowThreadProcessId,
+};
 use bimap::BiHashMap;
 use smol::{
     channel::{Receiver, Sender},
     future::FutureExt,
+    Timer,
 };
-use std::{collections::HashMap, fmt::Debug, future::Future, pin::Pin};
+use std::{collections::HashMap, fmt::Debug, future::Future, pin::Pin, time::Duration};
 use win32_coreaudio::{
     string::{WinStr, WinString},
     AudioEndpointVolume, AudioEndpointVolumeCallback, AudioSessionControl, AudioSessionControl2,
@@ -17,6 +21,8 @@ use win32_coreaudio::{
     StorageAccessMode, DEVICE_FRIENDLY_NAME,
 };
 use windows::Guid;
+
+type ProcessId = u32;
 
 pub struct WindowsAudioBackend(());
 
@@ -47,6 +53,8 @@ struct Runtime {
     session_ids: BiHashMap<StreamId, SessionId>,
     devices: HashMap<StreamId, AudioDevice>,
     sessions: HashMap<StreamId, AudioSession>,
+    process_ids: BiHashMap<StreamId, ProcessId>,
+    window_focus: Option<StreamId>,
 }
 
 impl Runtime {
@@ -70,11 +78,26 @@ impl Runtime {
             session_ids: BiHashMap::new(),
             devices: HashMap::new(),
             sessions: HashMap::new(),
+            process_ids: BiHashMap::new(),
+            window_focus: None,
         })
     }
 
     async fn run(&mut self) -> windows::Result<()> {
         // Init:
+
+        // Spawn polling task
+        let event_tx = self.event_tx.clone();
+        smol::spawn(async move {
+            loop {
+                Timer::after(Duration::from_millis(100)).await;
+                let result = event_tx.send(NotifyEvent::PollFocus).await;
+                if result.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
 
         // Register notifier to handle added/removed devices.
         let notifier = AudioNotifier {
@@ -98,7 +121,13 @@ impl Runtime {
                 ))
             };
             let incoming = control_future.or(notify_future).await;
-            log::debug!("incoming {:?}", incoming);
+            if !incoming
+                .as_ref()
+                .map(Incoming::suppress_log)
+                .unwrap_or(false)
+            {
+                log::debug!("incoming {:?}", incoming);
+            }
             match incoming {
                 Some(Incoming::Control(control_message)) => match control_message {
                     AudioControl::StreamControl {
@@ -194,8 +223,10 @@ impl Runtime {
                                     )?;
                                     let stream_id = session.stream_id();
                                     let stream_info = session.stream_info()?;
+                                    let process_id = session.process_id()?;
                                     self.sessions.insert(stream_id, session);
                                     self.session_ids.insert(stream_id, session_id);
+                                    self.process_ids.insert(stream_id, process_id);
                                     self.handle
                                         .send(AudioEvent::StreamOpened {
                                             stream_id,
@@ -209,10 +240,26 @@ impl Runtime {
                     NotifyEvent::SessionDisconnected(stream_id) => {
                         if self.sessions.remove(&stream_id).is_some() {
                             self.session_ids.remove_by_left(&stream_id);
+                            self.process_ids.remove_by_left(&stream_id);
                             self.handle
                                 .send(AudioEvent::StreamClosed { stream_id })
                                 .await;
                         };
+                    }
+                    NotifyEvent::PollFocus => {
+                        let mut process_id = 0;
+                        unsafe {
+                            GetWindowThreadProcessId(GetForegroundWindow(), &mut process_id);
+                        }
+                        let new_focus = self.process_ids.get_by_right(&process_id).cloned();
+                        if self.window_focus != new_focus {
+                            self.window_focus = new_focus;
+                            self.handle
+                                .send(AudioEvent::WindowFocusChanged {
+                                    stream_id: self.window_focus,
+                                })
+                                .await;
+                        }
                     }
                 },
                 None => break,
@@ -256,6 +303,15 @@ impl Runtime {
 enum Incoming {
     Control(AudioControl),
     Notify(NotifyEvent),
+}
+
+impl Incoming {
+    fn suppress_log(&self) -> bool {
+        match self {
+            Self::Notify(NotifyEvent::PollFocus) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -339,6 +395,7 @@ enum NotifyEvent {
     StreamStateChanged(StreamId, StreamState),
     SessionCreated(StreamId, SessionId),
     SessionDisconnected(StreamId),
+    PollFocus,
 }
 
 struct AudioSession {
@@ -428,6 +485,10 @@ impl AudioSession {
 
     fn step_volume(&self, steps: i32) -> windows::Result<()> {
         self.set_volume((self.volume()? + steps as f32 * 0.02).clamp(0.0, 1.0))
+    }
+
+    fn process_id(&self) -> windows::Result<ProcessId> {
+        self.session_control.get_process_id()
     }
 }
 

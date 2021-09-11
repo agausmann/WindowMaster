@@ -64,6 +64,9 @@ pub enum AudioEvent {
         stream_id: StreamId,
         stream_event: StreamEvent,
     },
+    WindowFocusChanged {
+        stream_id: Option<StreamId>,
+    },
 }
 
 #[derive(Debug)]
