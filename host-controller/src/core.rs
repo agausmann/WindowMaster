@@ -64,6 +64,7 @@ where
             bindings: BiGraph::new(),
             menus: HashMap::new(),
             window_focus: None,
+            default_device: None,
         };
         let runtime_task = runtime.run();
 
@@ -85,6 +86,7 @@ struct Runtime {
     bindings: BiGraph<ChannelId, Binding>,
     menus: HashMap<ChannelId, Menu>,
     window_focus: Option<StreamId>,
+    default_device: Option<StreamId>,
 }
 
 impl Runtime {
@@ -141,6 +143,10 @@ impl Runtime {
                     AudioEvent::WindowFocusChanged { stream_id } => {
                         self.window_focus = stream_id;
                         self.update_bound_channels(Binding::ActiveWindow).await?;
+                    }
+                    AudioEvent::DefaultDeviceChanged { stream_id } => {
+                        self.default_device = stream_id;
+                        self.update_bound_channels(Binding::DefaultDevice).await?;
                     }
                 },
                 Some(Incoming::ControlInput(control_input)) => match control_input {
@@ -234,6 +240,10 @@ impl Runtime {
             binding: None,
         });
         options.push(MenuOption {
+            name: "Default Device".into(),
+            binding: Some(Binding::DefaultDevice),
+        });
+        options.push(MenuOption {
             name: "Active Window".into(),
             binding: Some(Binding::ActiveWindow),
         });
@@ -245,7 +255,7 @@ impl Runtime {
                     binding: Some(Binding::Direct(*stream_id)),
                 }),
         );
-        options[2..].sort_by(|a, b| a.name.cmp(&b.name));
+        options[3..].sort_by(|a, b| a.name.cmp(&b.name));
         let menu = Menu {
             options,
             current_index: 0,
@@ -324,6 +334,7 @@ impl Runtime {
         match binding {
             Binding::Direct(stream_id) => Some(*stream_id),
             Binding::ActiveWindow => self.window_focus,
+            Binding::DefaultDevice => self.default_device,
         }
     }
 
@@ -401,6 +412,7 @@ struct MenuOption {
 enum Binding {
     Direct(StreamId),
     ActiveWindow,
+    DefaultDevice,
 }
 
 struct Stream {
