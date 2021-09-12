@@ -9,12 +9,13 @@ use cortex_m::prelude::*;
 use cortex_m_rt as rt;
 use stm32f0xx_hal::stm32;
 use windowmaster_firmware::indicator::Indicator;
-use windowmaster_firmware::system;
 
 // Pick a system definition here:
 
-//type System = system::DiscoverySystem;
-type System = system::Rev1System;
+use windowmaster_firmware::system::rev1 as system;
+//use windowmaster_firmware::system::discovery as system;
+
+use system::{PanicSystem, System};
 
 #[global_allocator]
 static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
@@ -29,7 +30,7 @@ fn panic(info: &PanicInfo) -> ! {
     let dp = unsafe { stm32::Peripherals::steal() };
     let cp = unsafe { stm32::CorePeripherals::steal() };
 
-    let mut system = interrupt_free(|cs| System::new(dp, cp, cs));
+    let mut system = interrupt_free(|cs| PanicSystem::new(dp, cp, cs));
 
     system.status_led().turn_off().ok();
     for _ in 0..4 {
