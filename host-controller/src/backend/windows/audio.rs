@@ -20,6 +20,7 @@ use win32_coreaudio::{
     NotificationClient, NotificationData, Property, PropertyStore, SimpleAudioVolume,
     StorageAccessMode, DEVICE_FRIENDLY_NAME,
 };
+use win32_coreaudio::{DataFlow, DeviceRole};
 use windows::Guid;
 
 type ProcessId = u32;
@@ -112,6 +113,18 @@ impl Runtime {
         for ll_device in &device_list {
             self.add_device(ll_device).await?;
         }
+
+        let default_device: DeviceId = self
+            .device_enumerator
+            .get_default_audio_endpoint(DataFlow::Render, DeviceRole::Console)?
+            .get_id()
+            .map(DeviceId)?;
+        let default_stream_id = self.device_ids.get_by_right(&default_device).cloned();
+        self.handle
+            .send(AudioEvent::DefaultDeviceChanged {
+                stream_id: default_stream_id,
+            })
+            .await;
 
         loop {
             let control_future = async { self.handle.recv().await.map(Incoming::Control) };
@@ -245,6 +258,12 @@ impl Runtime {
                                 .send(AudioEvent::StreamClosed { stream_id })
                                 .await;
                         };
+                    }
+                    NotifyEvent::DefaultDeviceChanged(device_id) => {
+                        let stream_id = self.device_ids.get_by_right(&device_id).cloned();
+                        self.handle
+                            .send(AudioEvent::DefaultDeviceChanged { stream_id })
+                            .await;
                     }
                     NotifyEvent::PollFocus => {
                         let mut process_id = 0;
@@ -385,6 +404,18 @@ impl NotificationClient for AudioNotifier {
         self.send(NotifyEvent::DeviceStateChanged(device_id.into(), state));
         Ok(())
     }
+
+    fn on_default_device_changed(
+        &mut self,
+        data_flow: DataFlow,
+        role: DeviceRole,
+        device_id: &WinStr,
+    ) -> windows::Result<()> {
+        if data_flow == DataFlow::Render && role == DeviceRole::Console {
+            self.send(NotifyEvent::DefaultDeviceChanged(device_id.into()));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -395,6 +426,7 @@ enum NotifyEvent {
     StreamStateChanged(StreamId, StreamState),
     SessionCreated(StreamId, SessionId),
     SessionDisconnected(StreamId),
+    DefaultDeviceChanged(DeviceId),
     PollFocus,
 }
 
