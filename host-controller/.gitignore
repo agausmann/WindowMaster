@@ -1,0 +1,5 @@
+# Cargo build files
+/target
+
+# VS Code
+/workspace.code-workspace

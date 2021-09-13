@@ -10,4 +10,5 @@ This project is made up of multiple hardware and software parts:
 
 - `firmware/` - Firmware running on the controller.
 
-- PC software to actually control the volume. (TODO)
+- `host-controller/` (**WIP**) - PC software to bridge between the controller
+  and the system volume mixer.
