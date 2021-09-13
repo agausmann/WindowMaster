@@ -137,6 +137,9 @@ impl Runtime {
                                 if self.window_focus == Some(stream_id) {
                                     self.update_bound_channels(Binding::ActiveWindow).await?;
                                 }
+                                if self.default_device == Some(stream_id) {
+                                    self.update_bound_channels(Binding::DefaultDevice).await?;
+                                }
                             }
                         }
                     },
