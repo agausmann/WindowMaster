@@ -20,7 +20,10 @@ use win32_coreaudio::{
     NotificationClient, NotificationData, Property, PropertyStore, SimpleAudioVolume,
     StorageAccessMode, DEVICE_FRIENDLY_NAME,
 };
-use win32_coreaudio::{DataFlow, DeviceRole};
+use win32_coreaudio::{
+    AudioEndpointVolumeCallbackHandle, AudioSessionEventsHandle, AudioSessionNotificationHandle,
+    DataFlow, DeviceRole,
+};
 use windows::Guid;
 
 type ProcessId = u32;
@@ -104,7 +107,8 @@ impl Runtime {
         let notifier = AudioNotifier {
             event_tx: self.event_tx.clone(),
         };
-        self.device_enumerator
+        let _notifier = self
+            .device_enumerator
             .register_endpoint_notification(notifier)?;
 
         let device_list = self
@@ -435,6 +439,7 @@ struct AudioSession {
     stream_id: StreamId,
     session_control: AudioSessionControl2,
     volume_control: SimpleAudioVolume,
+    _session_notifier: AudioSessionEventsHandle,
 }
 
 impl AudioSession {
@@ -451,13 +456,15 @@ impl AudioSession {
             stream_id,
             event_tx,
         };
-        session_control.register_audio_session_notification(session_notifier)?;
+        let session_notifier =
+            session_control.register_audio_session_notification(session_notifier)?;
 
         Ok(Self {
             parent_stream_id,
             stream_id,
             session_control,
             volume_control,
+            _session_notifier: session_notifier,
         })
     }
 
@@ -530,6 +537,8 @@ struct AudioDevice {
     properties: PropertyStore,
     volume: AudioEndpointVolume,
     session_manager: AudioSessionManager2,
+    _device_notifier: AudioEndpointVolumeCallbackHandle,
+    _session_notifier: AudioSessionNotificationHandle,
 }
 
 impl AudioDevice {
@@ -555,13 +564,13 @@ impl AudioDevice {
             stream_id,
             event_tx: event_tx.clone(),
         };
-        volume.register_control_change_notify(device_notifier)?;
+        let device_notifier = volume.register_control_change_notify(device_notifier)?;
 
         let session_notifier = NewSessionNotifier {
             stream_id,
             event_tx,
         };
-        session_manager.register_session_notification(session_notifier)?;
+        let session_notifier = session_manager.register_session_notification(session_notifier)?;
 
         Ok(Self {
             ll_device,
@@ -569,6 +578,8 @@ impl AudioDevice {
             volume,
             stream_id,
             session_manager,
+            _device_notifier: device_notifier,
+            _session_notifier: session_notifier,
         })
     }
 

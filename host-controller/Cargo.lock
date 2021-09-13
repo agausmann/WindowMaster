@@ -535,7 +535,7 @@ checksum = "c168940144dd21fd8046987c16a46a33d5fc84eec29ef9dcddc2ac9e31526b7c"
 [[package]]
 name = "win32-coreaudio"
 version = "0.1.0"
-source = "git+https://github.com/agausmann/win32-coreaudio-rs.git#9ae8e5237be1ae64165256923b463cde6423598f"
+source = "git+https://github.com/agausmann/win32-coreaudio-rs.git#06bd4c6c57596f271a60871d2456f9be3f0704ab"
 dependencies = [
  "bitflags",
  "windows",
