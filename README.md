@@ -1,5 +1,7 @@
 # WindowMaster
 
+![WindowMaster Rev1](media/photos/rev1.png)
+
 A physical controller for the Windows Volume Mixer (sndvol).
 
 This project is made up of multiple hardware and software parts:
